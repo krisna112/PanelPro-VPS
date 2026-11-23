@@ -234,3 +234,118 @@ class NotifyChannel(Base):
     events: Mapped[list] = mapped_column(JSON, default=list)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+# ---------------------------------------------------------------------------
+# Pro modules: DNS accounts, daemon guard, traffic, WAF, LB, tamper, fleet
+# ---------------------------------------------------------------------------
+
+
+class DnsAccount(Base):
+    """Stored DNS provider credentials for DNS-01 (wildcard) certificates.
+
+    ``config_enc`` holds a Fernet-encrypted JSON blob from core.keyvault and
+    is never returned to the client in plaintext.
+    """
+
+    __tablename__ = "dns_accounts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(100))
+    provider: Mapped[str] = mapped_column(String(32))  # cloudflare|digitalocean|dnspod|aliyun|godaddy
+    config_enc: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class DaemonTask(Base):
+    """Process guard task: keeps a service/process/port alive and restarts it."""
+
+    __tablename__ = "daemon_tasks"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(100))
+    kind: Mapped[str] = mapped_column(String(16), default="systemd")  # systemd|pidfile|port|command
+    target: Mapped[str] = mapped_column(String(255))  # unit / pid file / host:port / argv[0]
+    restart_cmd: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    check_interval: Mapped[int] = mapped_column(Integer, default=60)  # seconds
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    last_status: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    last_check_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    restart_count: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class TrafficDaily(Base):
+    """Aggregated per-site access-log statistics (one row per site/day)."""
+
+    __tablename__ = "traffic_daily"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    site_id: Mapped[int] = mapped_column(Integer, index=True)
+    date: Mapped[str] = mapped_column(String(10))  # YYYY-MM-DD
+    pv: Mapped[int] = mapped_column(Integer, default=0)
+    uv: Mapped[int] = mapped_column(Integer, default=0)
+    bytes_total: Mapped[int] = mapped_column(Integer, default=0)
+    spiders: Mapped[int] = mapped_column(Integer, default=0)
+    errors: Mapped[int] = mapped_column(Integer, default=0)
+    top_ips: Mapped[dict] = mapped_column(JSON, default=dict)
+    top_urls: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class WafProfile(Base):
+    """Per-site nginx WAF rules (CC limit, IP/UA blocklists)."""
+
+    __tablename__ = "waf_profiles"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    site_id: Mapped[int] = mapped_column(Integer, index=True, unique=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    cc_rpm: Mapped[int] = mapped_column(Integer, default=300)  # requests per minute
+    blocked_ips: Mapped[list] = mapped_column(JSON, default=list)
+    blocked_uas: Mapped[list] = mapped_column(JSON, default=list)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class Upstream(Base):
+    """nginx upstream pool for load balancing (http-context conf)."""
+
+    __tablename__ = "upstreams"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(64), unique=True)
+    servers: Mapped[list] = mapped_column(JSON, default=list)  # [{host, port, weight}]
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class TamperWatch(Base):
+    """Website file-integrity watch: baseline hashes + optional auto-restore."""
+
+    __tablename__ = "tamper_watches"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    site_id: Mapped[int] = mapped_column(Integer, index=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    mode: Mapped[str] = mapped_column(String(16), default="alert")  # alert|auto_restore
+    baseline: Mapped[dict] = mapped_column(JSON, default=dict)
+    baseline_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_scan_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_changes: Mapped[list] = mapped_column(JSON, default=list)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
+class RemoteServer(Base):
+    """Fleet node: another PanelPro instance controlled from this master."""
+
+    __tablename__ = "remote_servers"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(100))
+    base_url: Mapped[str] = mapped_column(String(255))
+    api_key_enc: Mapped[str] = mapped_column(Text, default="")
+    entry_path: Mapped[str] = mapped_column(String(64), default="")
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    version: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)

@@ -3,6 +3,7 @@ custom certificates, with expiry monitoring and auto-renew."""
 
 from __future__ import annotations
 
+import os
 import re
 from datetime import datetime
 from pathlib import Path
@@ -71,6 +72,103 @@ def renew_all() -> dict:
         raise PanelError("certbot is not installed.", 400)
     res = run(["certbot", "renew", "--quiet"], timeout=600)
     return {"ok": res.code == 0, "output": (res.stdout + res.stderr)[-400:]}
+
+
+# ---------------------------------------------------------------------------
+# DNS-01 challenge (wildcard certificates via DNS provider APIs)
+# ---------------------------------------------------------------------------
+
+# provider -> (certbot dns plugin flag, credentials file ini section header)
+DNS_PROVIDERS = {
+    "cloudflare": ("dns-cloudflare", "dns_cloudflare_api_token"),
+    "digitalocean": ("dns-digitalocean", "dns_digitalocean_token"),
+    "dnspod": ("dns-dnspod", "dns_dnspod_id\ndns_dnspod_token"),
+    "aliyun": ("dns-aliyun", "dns_aliyun_access_key_id\ndns_aliyun_access_key_secret"),
+    "godaddy": ("dns-godaddy", "dns_godaddy_key\ndns_godaddy_secret"),
+}
+
+
+def dns_provider_list() -> list[str]:
+    return sorted(DNS_PROVIDERS)
+
+
+def _dns_credentials_body(provider: str, config: dict) -> str:
+    """Render the certbot credentials ini body; raises on missing fields."""
+    if provider not in DNS_PROVIDERS:
+        raise PanelError(
+            f"Unsupported DNS provider '{provider}'. "
+            f"Available: {', '.join(sorted(DNS_PROVIDERS))}.",
+            400,
+        )
+    _, cred_keys = DNS_PROVIDERS[provider]
+    prefix = f"dns_{provider.replace('-', '_')}_"
+    body = ""
+    for key in (k for k in cred_keys.split("\n") if k):
+        short = key.replace(prefix, "")
+        value = str(config.get(short, "") or config.get(key, ""))
+        if not value:
+            raise PanelError(f"Missing DNS credential field: {short}", 400)
+        body += f"{key} = {value}\n"
+    return body
+
+
+def issue_letsencrypt_dns(
+    domain: str,
+    aliases: list[str],
+    provider: str,
+    config: dict,
+    email: str,
+) -> dict:
+    """Issue (wildcard) certificates via certbot DNS-01 with provider creds.
+
+    The credentials file is written with mode 0600 into the panel tmp dir
+    and deleted right after certbot finishes.
+    """
+    domain = validate_cert_domain(domain)
+    aliases = [validate_cert_domain(a) for a in aliases if a]
+    if provider not in DNS_PROVIDERS:
+        raise PanelError(
+            f"Unsupported DNS provider '{provider}'. "
+            f"Available: {', '.join(sorted(DNS_PROVIDERS))}.",
+            400,
+        )
+    require("certbot", "Install certbot (apt/yum install certbot).")
+    flag = DNS_PROVIDERS[provider][0]
+    body = _dns_credentials_body(provider, config)
+
+    cred_file = CFG.tmp_dir / f"pp_dns_{domain.replace('*', '_wild_')}_{os.getpid()}.ini"
+    CFG.tmp_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        cred_file.write_text(body, encoding="utf-8")
+        cred_file.chmod(0o600)
+        domains: list[str] = []
+        for d in [domain, *aliases]:
+            if d and d not in domains:
+                domains.append(d)
+        args = ["certbot", "certonly", f"--{flag}", "--non-interactive",
+                "--agree-tos", "--keep-until-expiring",
+                f"--{flag}-credentials", str(cred_file),
+                f"--{flag}-propagation-seconds", "60"]
+        for d in domains:
+            args += ["-d", d]
+        args += ["-m", email or "admin@" + domain.lstrip("*.")]
+        res = run(args, timeout=300)
+    finally:
+        try:
+            cred_file.unlink()
+        except OSError:
+            pass
+    if res.code != 0:
+        raise PanelError(
+            f"certbot DNS-01 failed: {(res.stderr or res.stdout)[-400:]} "
+            f"(is the certbot DNS plugin '{flag}' installed?)",
+            500,
+        )
+    live = Path("/etc/letsencrypt/live") / domain
+    cert_path = str(live / "fullchain.pem")
+    key_path = str(live / "privkey.pem")
+    info = cert_util.parse_cert_file(cert_path)
+    return {"info": info, "cert_path": cert_path, "key_path": key_path}
 
 
 def issue_selfsigned(domain: str, aliases: list[str] | None = None, days: int = 3650) -> dict:
