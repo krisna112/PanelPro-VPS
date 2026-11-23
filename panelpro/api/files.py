@@ -62,6 +62,12 @@ class ExtractBody(BaseModel):
     dest: str
 
 
+@router.get("/home")
+def home_dir(ctx=Depends(require_auth)):
+    """Default working directory for the file manager (the www root)."""
+    return api_ok({"path": str(CFG.www_root), "exists": CFG.www_root.is_dir()})
+
+
 @router.get("/list")
 def list_dir(path: str = "/", show_hidden: bool = True, ctx=Depends(require_auth)):
     data = fsutil.list_dir(path, show_hidden=show_hidden)

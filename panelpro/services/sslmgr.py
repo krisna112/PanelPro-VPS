@@ -12,6 +12,24 @@ from panelpro.core import certs as cert_util
 from panelpro.core.errors import PanelError
 from panelpro.core.syscmd import require, run, which
 
+# Domains become filesystem paths under CFG.ssl_dir, so they must be strict
+# hostnames — this also blocks path traversal via a crafted domain.
+DOMAIN_RE = re.compile(r"^(?:\*\.)?[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?$")
+
+
+def validate_cert_domain(domain: str) -> str:
+    domain = (domain or "").strip().lower().rstrip(".")
+    if (
+        not domain
+        or len(domain) > 253
+        or not DOMAIN_RE.match(domain)
+        or ".." in domain
+        or "/" in domain
+        or "\\" in domain
+    ):
+        raise PanelError(f"Invalid certificate domain: {domain}", 400)
+    return domain
+
 
 def certbot_available() -> bool:
     return which("certbot") is not None
@@ -24,6 +42,8 @@ def issue_letsencrypt(
     email: str,
 ) -> dict:
     """Issue/renew via certbot webroot; returns parsed cert info + paths."""
+    domain = validate_cert_domain(domain)
+    aliases = [validate_cert_domain(a) for a in aliases if a]
     require("certbot", "Install certbot (apt/yum install certbot).")
     require("mkdir")
     run(["mkdir", "-p", webroot], check=True)
@@ -54,6 +74,8 @@ def renew_all() -> dict:
 
 
 def issue_selfsigned(domain: str, aliases: list[str] | None = None, days: int = 3650) -> dict:
+    domain = validate_cert_domain(domain)
+    aliases = [validate_cert_domain(a) for a in (aliases or []) if a]
     cert_pem, key_pem = cert_util.generate_selfsigned(domain, days=days, extra_domains=aliases)
     out_dir = CFG.ssl_dir / domain
     out_dir.mkdir(parents=True, exist_ok=True)

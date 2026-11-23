@@ -29,8 +29,23 @@ def test_build_command_url():
 
 
 def test_build_command_script_quotes_path():
+    import shlex
+
     cmd = cronsvc.build_command("script", "/opt/run.sh")
-    assert "bash '/opt/run.sh'" in cmd
+    # the script path must remain a single argv token after shlex quoting
+    assert shlex.split(cmd)[0] == "bash"
+    assert "/opt/run.sh" in shlex.split(cmd)
+
+
+def test_build_command_url_injection_is_inert():
+    import shlex
+
+    payload = "http://x.test/cron'; rm -rf / #"
+    cmd = cronsvc.build_command("url", payload)
+    tokens = shlex.split(cmd)
+    # payload must be one inert curl argument, not shell syntax
+    assert tokens[0] == "curl"
+    assert payload in tokens
 
 
 def test_build_command_rejects_unknown():

@@ -6,6 +6,7 @@ updated and toggled without touching unrelated crontab content.
 
 from __future__ import annotations
 
+import shlex
 from datetime import datetime
 
 from croniter import croniter
@@ -20,7 +21,7 @@ ENABLED_MARKER = "# pp-enabled"
 
 def validate_schedule(expr: str) -> str:
     expr = (expr or "").strip()
-    if not croniter.is_valid(expr):
+    if "\n" in expr or "\r" in expr or not croniter.is_valid(expr):
         raise PanelError(f"Invalid cron expression: {expr}", 400)
     return expr
 
@@ -31,12 +32,19 @@ def next_run(expr: str) -> datetime:
 
 
 def build_command(job_type: str, command: str) -> str:
+    # A cron entry is one physical line; embedded newlines would let a task
+    # inject additional crontab lines, so they are rejected for every type.
+    if not command or "\n" in command or "\r" in command:
+        raise PanelError("Task command must be a single non-empty line.", 400)
     if job_type == "shell":
         return command
     if job_type == "url":
-        return f"curl -sS --max-time 300 '{command}' > /dev/null"
+        return f"curl -sS --max-time 300 {shlex.quote(command)} > /dev/null"
     if job_type == "script":
-        return f"bash '{command}' >> '{CFG.cron_log_dir}/script-last.log' 2>&1"
+        return (
+            f"bash {shlex.quote(command)} "
+            f">> {shlex.quote(str(CFG.cron_log_dir / 'script-last.log'))} 2>&1"
+        )
     raise PanelError(f"Unknown task type: {job_type}", 400)
 
 
@@ -52,13 +60,18 @@ def write_crontab(lines: list[str]) -> None:
     import subprocess
 
     content = "\n".join(lines).rstrip("\n") + "\n" if lines else ""
-    proc = subprocess.run(
-        ["crontab", "-"],
-        input=content,
-        capture_output=True,
-        text=True,
-        timeout=15,
-    )
+    try:
+        proc = subprocess.run(
+            ["crontab", "-"],
+            input=content,
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+    except FileNotFoundError as exc:
+        raise PanelError(
+            "crontab is not available (requires a Linux server).", 400
+        ) from exc
     if proc.returncode != 0:
         raise PanelError(f"Failed to write crontab: {proc.stderr[-300:]}", 500)
 

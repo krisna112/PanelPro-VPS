@@ -32,7 +32,7 @@ def generate_selfsigned(domain: str, days: int = 3650, extra_domains: list[str] 
         .subject_name(subject)
         .issuer_name(issuer)
         .public_key(key.public_key())
-        .serial_number(x509.random_certificate_number())
+        .serial_number(x509.random_serial_number())
         .not_valid_before(now - datetime.timedelta(days=1))
         .not_valid_after(now + datetime.timedelta(days=days))
         .add_extension(x509.SubjectAlternativeName(names), critical=False)

@@ -2,7 +2,7 @@
 PP.pages = PP.pages || {};
 PP.pages.files = {
   data: () => ({
-    path: '/', entries: [], disk: null, showHidden: true, loading: false,
+    path: '/', homePath: '/', entries: [], disk: null, showHidden: true, loading: false,
     selected: new Set(),
     editor: { open: false, path: '', content: '', saving: false },
     zip: { open: false, out: '', fmt: 'zip' },
@@ -179,7 +179,15 @@ PP.pages.files = {
       return '📄';
     },
   },
-  mounted() { this.load(); },
+  async mounted() {
+    // Start in the www root (aaPanel-style), falling back to '/'.
+    try {
+      const home = await PP.api('files/home');
+      this.homePath = home.path;
+      this.path = home.exists ? home.path : '/';
+    } catch (e) { /* keep '/' */ }
+    this.load();
+  },
   template: `
   <div>
     <div class="page-head">
@@ -207,6 +215,7 @@ PP.pages.files = {
                :placeholder="PP.t('common.search')" @keyup.enter="doSearch">
         <button class="btn small" @click="doSearch">🔍</button>
         <button class="btn small" @click="showHidden = !showHidden; load()">👁</button>
+        <button class="btn small" @click="path = homePath; load()" :title="PP.t('files.wwwroot')">🌐</button>
         <button class="btn small" @click="goUp">↰</button>
         <button class="btn small" @click="load()">⟳</button>
       </div>

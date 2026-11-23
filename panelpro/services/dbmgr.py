@@ -15,11 +15,25 @@ from panelpro.core.syscmd import require, run, which
 
 IDENT_RE = re.compile(r"^[A-Za-z0-9_]{1,64}$")
 
+# Charsets are interpolated into CREATE DATABASE statements, so only a fixed
+# whitelist is accepted — never trust API-supplied charset strings.
+MYSQL_CHARSETS = {"utf8mb4", "utf8", "latin1", "binary", "ascii"}
+PG_CHARSETS = {"UTF8", "LATIN1", "SQL_ASCII"}
+
 
 def validate_ident(name: str, what: str = "identifier") -> str:
     if not IDENT_RE.match(name or ""):
         raise PanelError(f"Invalid {what}: {name}", 400)
     return name
+
+
+def validate_charset(charset: str, allowed: set[str]) -> str:
+    if charset not in allowed:
+        raise PanelError(
+            f"Unsupported charset '{charset}'. Allowed: {', '.join(sorted(allowed))}.",
+            400,
+        )
+    return charset
 
 
 def _sql_escape(value: str) -> str:
@@ -70,6 +84,7 @@ class MySQLManager:
 
     def create_database(self, name: str, charset: str = "utf8mb4") -> None:
         validate_ident(name, "database name")
+        charset = validate_charset(charset, MYSQL_CHARSETS)
         self._query(
             f"CREATE DATABASE `{name}` CHARACTER SET {charset} "
             f"COLLATE {charset}_unicode_ci;"
@@ -157,6 +172,7 @@ class PostgresManager:
 
     def create_database(self, name: str, charset: str = "UTF8") -> None:
         validate_ident(name, "database name")
+        charset = validate_charset(charset, PG_CHARSETS)
         self._psql(f"CREATE DATABASE {name} ENCODING '{charset}';")
 
     def delete_database(self, name: str) -> None:
