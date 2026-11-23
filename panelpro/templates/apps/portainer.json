@@ -1,0 +1,16 @@
+{
+  "id": "portainer",
+  "name": "Portainer CE",
+  "category": "docker",
+  "description": "Docker container management UI, runs as a docker compose stack.",
+  "version": "latest",
+  "type": "docker",
+  "port": 9443,
+  "docs_url": "https://docs.portainer.io",
+  "params": [
+    {"name": "http_port", "label": "UI port (HTTPS)", "default": "9443", "required": true}
+  ],
+  "compose": "services:\n  portainer:\n    image: portainer/portainer-ce:latest\n    container_name: panelpro-portainer\n    restart: unless-stopped\n    ports:\n      - \"{{ http_port }}:9443\"\n    volumes:\n      - /var/run/docker.sock:/var/run/docker.sock\n      - portainer_data:/data\nvolumes:\n  portainer_data:\n",
+  "install_script": "set -e\ncd {{ app_home }} && docker compose up -d\necho \"Portainer: https://<server>:{{ http_port }}\"",
+  "uninstall_script": "cd {{ app_home }} && docker compose down -v || true\necho \"Portainer stack removed\""
+}

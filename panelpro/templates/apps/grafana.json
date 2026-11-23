@@ -1,0 +1,13 @@
+{
+  "id": "grafana",
+  "name": "Grafana",
+  "category": "monitoring",
+  "description": "Dashboards and metrics visualization, installed from the official APT repository.",
+  "version": "latest",
+  "type": "script",
+  "port": 3000,
+  "docs_url": "https://grafana.com/docs",
+  "params": [],
+  "install_script": "set -e\n. /etc/os-release\nif [ \"$ID\" = \"ubuntu\" ] || [ \"$ID\" = \"debian\" ]; then\n  mkdir -p /etc/apt/keyrings\n  curl -fsSL https://apt.grafana.com/gpg.key | gpg --dearmor -o /etc/apt/keyrings/grafana.gpg\n  echo \"deb [signed-by=/etc/apt/keyrings/grafana.gpg] https://apt.grafana.com stable main\" > /etc/apt/sources.list.d/grafana.list\n  apt-get update -qq\n  apt-get install -y grafana\n  systemctl enable --now grafana-server\nelse\n  echo \"This manifest supports Debian/Ubuntu only; use docker instead.\" >&2\n  exit 1\nfi\necho \"Grafana: http://<server>:3000 (default admin/admin — change it!)\"",
+  "uninstall_script": "systemctl disable --now grafana-server 2>/dev/null || true\napt-get remove -y grafana 2>/dev/null || true\necho \"Grafana removed\""
+}

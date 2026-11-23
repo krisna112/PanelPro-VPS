@@ -1,0 +1,63 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "panelpro"
+version = "1.0.0"
+description = "PanelPro — open-source Linux server control panel (original project, written from scratch)"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "PanelPro Project" }]
+keywords = ["server", "panel", "hosting", "nginx", "linux", "control-panel"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Web Environment",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: System :: Systems Administration",
+]
+dependencies = [
+    "fastapi>=0.110,<1.0",
+    "uvicorn[standard]>=0.29",
+    "sqlalchemy>=2.0",
+    "psutil>=5.9",
+    "bcrypt>=4.1",
+    "pyotp>=2.8",
+    "qrcode>=7.4",
+    "cryptography>=42.0",
+    "paramiko>=3.4",
+    "jinja2>=3.1",
+    "python-multipart>=0.0.9",
+    "httpx>=0.27",
+    "croniter>=2.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "ruff>=0.4"]
+
+[project.scripts]
+panelpro = "panelpro.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["panelpro*"]
+
+[tool.setuptools.package-data]
+panelpro = ["templates/**/*", "plugins/**/*"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

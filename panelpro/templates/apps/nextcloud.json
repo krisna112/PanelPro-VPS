@@ -1,0 +1,18 @@
+{
+  "id": "nextcloud",
+  "name": "Nextcloud",
+  "category": "cloud",
+  "description": "Self-hosted files/cloud collaboration platform, installed from the official release.",
+  "version": "latest",
+  "type": "script",
+  "port": null,
+  "docs_url": "https://nextcloud.com",
+  "params": [
+    {"name": "domain", "label": "Domain (site folder)", "default": "", "required": true},
+    {"name": "db_name", "label": "Database name (MySQL)", "default": "", "required": true},
+    {"name": "db_user", "label": "Database user", "default": "", "required": true},
+    {"name": "db_pass", "label": "Database password", "default": "", "required": true}
+  ],
+  "install_script": "set -e\nSITE=\"{{ www_root }}/{{ domain }}\"\nmkdir -p \"$SITE\"\ncurl -sSLo /tmp/panelpro-nextcloud.zip https://download.nextcloud.com/server/releases/latest.zip\nif command -v unzip >/dev/null 2>&1; then\n  unzip -q /tmp/panelpro-nextcloud.zip -d /tmp/panelpro-nc\nelse\n  python3 -c \"import zipfile; zipfile.ZipFile('/tmp/panelpro-nextcloud.zip').extractall('/tmp/panelpro-nc')\"\nfi\nshopt -s dotglob\nmv /tmp/panelpro-nc/*/* \"$SITE\"/\nrm -rf /tmp/panelpro-nextcloud.zip /tmp/panelpro-nc\nif command -v chown >/dev/null 2>&1; then\n  OWNER=$(id -un www-data 2>/dev/null || id -un apache 2>/dev/null || true)\n  [ -n \"$OWNER\" ] && chown -R \"$OWNER\":\"$OWNER\" \"$SITE\"\nfi\necho \"Nextcloud installed at $SITE (DB: {{ db_name }})\"",
+  "uninstall_script": "rm -rf \"{{ www_root }}/{{ domain }}\"\necho \"Nextcloud folder removed\""
+}

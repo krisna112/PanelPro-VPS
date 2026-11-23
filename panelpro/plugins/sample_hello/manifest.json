@@ -1,0 +1,8 @@
+{
+  "id": "sample_hello",
+  "name": "Sample Hello Plugin",
+  "version": "1.0.0",
+  "description": "Minimal example plugin demonstrating the PanelPro plugin API.",
+  "author": "PanelPro Project",
+  "prefix": "/api/plugins/hello"
+}

@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+
+# Panel runtime data (dev)
+runtime/
+runtime-dev/
+admin_credentials.txt
+*.db
+*.db-journal
+
+# Local agent session metadata
+.zcode/
+
+# Node / vendor (fetched by scripts/vendor_assets.sh)
+web/assets/vendor/
+
+# Editors & OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Test & lint caches
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/

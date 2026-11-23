@@ -1,0 +1,18 @@
+{
+  "id": "wordpress",
+  "name": "WordPress",
+  "category": "cms",
+  "description": "World's most popular CMS/blog engine, installed from the official latest release.",
+  "version": "latest",
+  "type": "script",
+  "port": null,
+  "docs_url": "https://wordpress.org",
+  "params": [
+    {"name": "domain", "label": "Domain (site folder)", "default": "", "required": true},
+    {"name": "db_name", "label": "Database name", "default": "", "required": true},
+    {"name": "db_user", "label": "Database user", "default": "", "required": true},
+    {"name": "db_pass", "label": "Database password", "default": "", "required": true}
+  ],
+  "install_script": "set -e\nSITE=\"{{ www_root }}/{{ domain }}\"\nmkdir -p \"$SITE\"\ncd \"$SITE\"\ncurl -sSLo /tmp/panelpro-wordpress.tar.gz https://wordpress.org/latest.tar.gz\ntar -xzf /tmp/panelpro-wordpress.tar.gz --strip-components=1\nrm -f /tmp/panelpro-wordpress.tar.gz\ncp wp-config-sample.php wp-config.php\nsed -i \"s/database_name_here/{{ db_name }}/; s/username_here/{{ db_user }}/; s/password_here/{{ db_pass }}/\" wp-config.php\nsed -i \"s/put your unique phrase here/{{ secret }}\" wp-config.php || true\nif command -v chown >/dev/null 2>&1; then\n  OWNER=$(id -un www-data 2>/dev/null || id -un apache 2>/dev/null || true)\n  [ -n \"$OWNER\" ] && chown -R \"$OWNER\":\"$OWNER\" \"$SITE\"\nfi\necho \"WordPress installed at $SITE\"",
+  "uninstall_script": "rm -rf \"{{ www_root }}/{{ domain }}\"\necho \"WordPress folder removed\""
+}

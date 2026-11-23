@@ -1,0 +1,17 @@
+{
+  "id": "redis-commander",
+  "name": "Redis Commander",
+  "category": "tools",
+  "description": "Web UI to browse and manage Redis databases.",
+  "version": "latest",
+  "type": "docker",
+  "port": 8081,
+  "docs_url": "https://github.com/joeferner/redis-commander",
+  "params": [
+    {"name": "http_port", "label": "UI port", "default": "8081", "required": true},
+    {"name": "redis_host", "label": "Redis host", "default": "host.docker.internal", "required": true}
+  ],
+  "compose": "services:\n  redis-commander:\n    image: rediscommander/redis-commander:latest\n    container_name: panelpro-redis-commander\n    restart: unless-stopped\n    environment:\n      - REDIS_HOSTS=local:{{ redis_host }}:6379\n    ports:\n      - \"{{ http_port }}:8081\"\n    extra_hosts:\n      - \"host.docker.internal:host-gateway\"\n",
+  "install_script": "set -e\ncd {{ app_home }} && docker compose up -d\necho \"Redis Commander: http://<server>:{{ http_port }}\"",
+  "uninstall_script": "cd {{ app_home }} && docker compose down -v || true\necho \"Redis Commander removed\""
+}

@@ -1,0 +1,16 @@
+{
+  "id": "n8n",
+  "name": "n8n",
+  "category": "automation",
+  "description": "Workflow automation tool (self-hosted), runs via docker compose.",
+  "version": "latest",
+  "type": "docker",
+  "port": 5678,
+  "docs_url": "https://docs.n8n.io",
+  "params": [
+    {"name": "http_port", "label": "UI port", "default": "5678", "required": true}
+  ],
+  "compose": "services:\n  n8n:\n    image: n8nio/n8n:latest\n    container_name: panelpro-n8n\n    restart: unless-stopped\n    ports:\n      - \"{{ http_port }}:5678\"\n    environment:\n      - N8N_ENCRYPTION_KEY={{ secret }}\n      - GENERIC_TIMEZONE=Asia/Jakarta\n    volumes:\n      - n8n_data:/home/node/.n8n\nvolumes:\n  n8n_data:\n",
+  "install_script": "set -e\ncd {{ app_home }} && docker compose up -d\necho \"n8n: http://<server>:{{ http_port }}\"",
+  "uninstall_script": "cd {{ app_home }} && docker compose down -v || true\necho \"n8n stack removed\""
+}

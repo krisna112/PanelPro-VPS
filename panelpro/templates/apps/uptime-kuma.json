@@ -1,0 +1,16 @@
+{
+  "id": "uptime-kuma",
+  "name": "Uptime Kuma",
+  "category": "monitoring",
+  "description": "Self-hosted uptime monitoring with status pages and notifications.",
+  "version": "latest",
+  "type": "docker",
+  "port": 3001,
+  "docs_url": "https://github.com/louislam/uptime-kuma",
+  "params": [
+    {"name": "http_port", "label": "UI port", "default": "3001", "required": true}
+  ],
+  "compose": "services:\n  uptime-kuma:\n    image: louislam/uptime-kuma:latest\n    container_name: panelpro-uptime-kuma\n    restart: unless-stopped\n    ports:\n      - \"{{ http_port }}:3001\"\n    volumes:\n      - uptime_kuma_data:/app/data\nvolumes:\n  uptime_kuma_data:\n",
+  "install_script": "set -e\ncd {{ app_home }} && docker compose up -d\necho \"Uptime Kuma: http://<server>:{{ http_port }}\"",
+  "uninstall_script": "cd {{ app_home }} && docker compose down -v || true\necho \"Uptime Kuma stack removed\""
+}
