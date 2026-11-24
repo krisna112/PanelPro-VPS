@@ -45,7 +45,8 @@ Untuk instalasi baru, buat username dan password admin saat diminta.
 Installer menyembunyikan password saat diketik dan meminta konfirmasi.
 
 Jalankan `sudo panelpro menu` di VPS untuk melihat URL login, mengelola
-layanan, mengganti port atau path login, mereset password, dan mengatur domain.
+layanan, mengganti port atau path login, dan mengatur domain. Pilih opsi `10`
+untuk mengganti username atau password akun yang sudah ada.
 
 Buka **Websites → Tambah Website**, lalu pilih **Website statis**, **PHP-FPM**,
 atau **Reverse proxy**. Setelah DNS mengarah ke VPS, gunakan menu **SSL / HTTPS**

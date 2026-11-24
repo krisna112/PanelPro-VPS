@@ -94,6 +94,7 @@ def menu() -> int:
             Namespace(username=input("Username [admin]: ").strip() or "admin"))),
         "8": ("Configure the HTTPS domain", _set_domain),
         "9": ("Show recent panel logs", _recent_logs),
+        "10": ("Change a login username or password", lambda: cli.cmd_change_credentials(Namespace(username=None))),
     }
     while True:
         print("\nPanelPro terminal menu")

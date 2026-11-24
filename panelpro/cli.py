@@ -3,6 +3,7 @@
     panelpro start [--host H] [--port P] [--dev]
     panelpro menu
     panelpro setup-admin
+    panelpro change-credentials [--username NAME]
     panelpro reset-password [--username NAME]
     panelpro set-port PORT
     panelpro set-entry PATH
@@ -61,6 +62,31 @@ def cmd_start(args) -> int:
     return 0
 
 
+def _read_username(label: str, default: str) -> str:
+    while True:
+        username = input(f"{label} [{default}]: ").strip()
+        if not username:
+            return default
+        if re.fullmatch(r"[a-zA-Z0-9_.-]{1,64}", username):
+            return username
+        print("Use up to 64 letters, digits, dots, underscores, or hyphens.")
+
+
+def _read_password(prompt: str, *, optional: bool = False) -> str:
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", GetPassWarning)
+        while True:
+            password = getpass(prompt)
+            if not password and optional:
+                return ""
+            if len(password) < 8 or len(password.encode("utf-8")) > 72:
+                print("Use at least 8 characters and at most 72 UTF-8 bytes.")
+                continue
+            if password == getpass("Confirm password: "):
+                return password
+            print("Passwords do not match. Try again.")
+
+
 def cmd_setup_admin(args) -> int:
     """Prompt for the first administrator before the service starts."""
     from sqlalchemy import text
@@ -75,21 +101,8 @@ def cmd_setup_admin(args) -> int:
         db.rollback()
 
         try:
-            while True:
-                username = input("Administrator username [admin]: ").strip() or "admin"
-                if re.fullmatch(r"[a-zA-Z0-9_.-]{1,64}", username):
-                    break
-                print("Use up to 64 letters, digits, dots, underscores, or hyphens.")
-            with warnings.catch_warnings():
-                warnings.simplefilter("error", GetPassWarning)
-                while True:
-                    password = getpass("Administrator password: ")
-                    if len(password) < 8 or len(password.encode("utf-8")) > 72:
-                        print("Use at least 8 characters and at most 72 UTF-8 bytes.")
-                        continue
-                    if password == getpass("Confirm password: "):
-                        break
-                    print("Passwords do not match. Try again.")
+            username = _read_username("Administrator username", "admin")
+            password = _read_password("Administrator password: ")
         except (EOFError, KeyboardInterrupt, GetPassWarning):
             print("Administrator setup requires an interactive terminal with hidden password input.", file=sys.stderr)
             return 1
@@ -103,6 +116,56 @@ def cmd_setup_admin(args) -> int:
         db.commit()
 
     print(f"Administrator '{username}' created. Use the password you entered to sign in.")
+    return 0
+
+
+def cmd_change_credentials(args) -> int:
+    from sqlalchemy import text
+
+    from panelpro.core import security
+    from panelpro.models.tables import User
+
+    try:
+        with _open_db() as db:
+            current = args.username
+            if current is None:
+                first_admin = db.query(User.username).filter_by(role="admin").order_by(User.id).first()
+                default = first_admin.username if first_admin else "admin"
+                db.rollback()
+                current = input(f"Current username [{default}]: ").strip() or default
+
+            user = security.get_user(db, current)
+            if user is None:
+                print(f"User '{current}' not found.", file=sys.stderr)
+                return 1
+            user_id, previous_hash = user.id, user.password_hash
+            db.rollback()
+
+            username = _read_username("New username", current)
+            password = _read_password("New password (Enter to keep the current one): ", optional=True)
+            if username == current and not password:
+                print("No changes requested.")
+                return 0
+
+            password_hash = security.hash_password(password) if password else None
+            db.execute(text("BEGIN IMMEDIATE"))
+            user = db.get(User, user_id)
+            if user is None or user.username != current or user.password_hash != previous_hash:
+                print("The account changed during this session. Run the command again.", file=sys.stderr)
+                return 1
+            if username != current and security.get_user(db, username) is not None:
+                print(f"Username '{username}' is already in use.", file=sys.stderr)
+                return 1
+
+            user.username = username
+            if password_hash is not None:
+                user.password_hash = password_hash
+            security.destroy_all_sessions(db, user_id)
+    except (EOFError, KeyboardInterrupt, GetPassWarning):
+        print("Credential changes require an interactive terminal with hidden password input.", file=sys.stderr)
+        return 1
+
+    print(f"Credentials updated. Sign in again as '{username}'.")
     return 0
 
 
@@ -247,6 +310,10 @@ def main(argv: list[str] | None = None) -> int:
 
     p = sub.add_parser("setup-admin", help="set the first administrator's username and password")
     p.set_defaults(fn=cmd_setup_admin)
+
+    p = sub.add_parser("change-credentials", help="change a login username or password interactively")
+    p.add_argument("--username", help="existing username to update")
+    p.set_defaults(fn=cmd_change_credentials)
 
     p = sub.add_parser("start", help="start the panel server")
     p.add_argument("--host", default=None)

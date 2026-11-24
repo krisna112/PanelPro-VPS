@@ -60,9 +60,15 @@ sudo panelpro menu
 
 The menu shows the login URL, admin usernames, and service status. Use it to
 start, stop, or restart the service, change the backend port or login path,
-reset a login password, set up the HTTPS domain, or view recent logs. Changing
+change a login username or password, set up the HTTPS domain, or view recent logs. Changing
 the backend port through the menu updates the managed HTTPS route and checks
 the new listener before reporting success.
+
+Choose option **10** to change credentials. Enter the account's current
+username, then enter a new username and a new password. Press Enter at either
+new-value prompt to keep that value. The console hides the password and asks
+you to confirm it. After saving, sign in again using the resulting username and
+password at your panel login URL. Changes take effect as soon as they are saved.
 
 If `/usr/local/bin/panelpro` is already in use, run
 `sudo /usr/local/panelpro/venv/bin/panelpro menu` with your install directory.
@@ -134,6 +140,7 @@ sudo bash scripts/uninstall.sh --purge   # also delete the install directory
 | `panelpro start [--host H] [--port P] [--dev]` | Run the server |
 | `panelpro menu` | Open the terminal administration menu |
 | `panelpro setup-admin` | Set the first admin username and password interactively |
+| `panelpro change-credentials [--username NAME]` | Update an existing account's username or password |
 | `panelpro reset-password [--username admin]` | Generate a password and revoke existing sessions |
 | `panelpro set-port 21000` | Change the listener port, then restart the panel |
 | `panelpro set-entry my-secret-path` | Change the private entry path |
