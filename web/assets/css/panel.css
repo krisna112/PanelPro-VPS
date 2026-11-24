@@ -265,6 +265,9 @@ table.table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 .table tbody tr:hover { background: var(--surface-2); }
 .table .actions { text-align: right; white-space: nowrap; }
 .table .actions .btn { margin-left: 6px; }
+.site-domain-cell { max-width: 44ch; min-width: 19ch; overflow-wrap: anywhere; }
+.site-php-select { padding: 4px 8px; font-size: 12px; }
+.site-error { color: var(--danger); overflow-wrap: anywhere; }
 .table-empty { padding: 28px; text-align: center; color: var(--faint); }
 
 /* Badges -------------------------------------------------------------------- */

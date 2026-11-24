@@ -54,7 +54,9 @@ class PanelConfig:
         self.is_windows = sys.platform.startswith("win")
         # Web roots only make sense on a Linux server; dev runs still need a
         # writable default so the sites/files modules can be exercised.
-        self.www_root = Path(DEFAULT_WWW_ROOT) if not self.is_windows else home / "www"
+        www_root = os.environ.get("PANELPRO_WWW_ROOT")
+        self.www_root = (Path(www_root).expanduser().resolve() if www_root else
+                         home / "www" if self.is_windows else Path(DEFAULT_WWW_ROOT))
         self.tmp_dir = home / "tmp"
 
     def ensure_dirs(self) -> None:

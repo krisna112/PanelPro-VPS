@@ -32,20 +32,26 @@ def _open_db():
 def cmd_start(args) -> int:
     import uvicorn
 
-    host = args.host or "0.0.0.0"
-    port = args.port
-    if port is None:
-        db = _open_db()
-        try:
-            from panelpro.core import settings_store
+    from panelpro.core import settings_store
 
-            settings_store.init_defaults()
-            port = int(settings_store.get_setting("panel_port"))
-        finally:
-            db.close()
+    with _open_db():
+        settings_store.init_defaults()
+    host = args.host or "127.0.0.1"
+    port = args.port if args.port is not None else int(settings_store.get_setting("panel_port"))
+    ssl_options = {}
+    if settings_store.get_setting("panel_ssl"):
+        cert = settings_store.get_setting("panel_ssl_cert")
+        key = settings_store.get_setting("panel_ssl_key")
+        if not cert or not key:
+            print("Panel HTTPS requires a configured certificate and private key.", file=sys.stderr)
+            return 1
+        ssl_options = {"ssl_certfile": cert, "ssl_keyfile": key}
     log_level = "debug" if args.dev else "info"
-    uvicorn.run("panelpro.main:app", host=host, port=port, log_level=log_level,
-                reload=False, workers=1)
+    uvicorn.run(
+        "panelpro.main:app", host=host, port=port, log_level=log_level, workers=1,
+        access_log=args.dev, proxy_headers=bool(settings_store.get_setting("trust_proxy")),
+        forwarded_allow_ips="127.0.0.1,::1", **ssl_options,
+    )
     return 0
 
 

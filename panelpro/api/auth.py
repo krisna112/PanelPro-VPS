@@ -17,7 +17,7 @@ from panelpro.constants import (
     SESSION_COOKIE,
     SESSION_TTL_HOURS,
 )
-from panelpro.core import notify, security, settings_store
+from panelpro.core import notify, security
 from panelpro.core.database import get_db
 from panelpro.core.errors import PanelError
 
@@ -69,7 +69,7 @@ def login(body: LoginBody, request: Request, db: Session = Depends(get_db)):
         "login_success", "Panel login", f"'{user.username}' logged in from {ip}."
     )
 
-    secure = bool(settings_store.get_setting("panel_ssl"))
+    secure = request.url.scheme == "https"
     resp = JSONResponse(api_ok({"username": user.username, "role": user.role}))
     resp.set_cookie(
         SESSION_COOKIE,

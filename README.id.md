@@ -32,21 +32,25 @@ web yang bersih.
 ## 🚀 Mulai Cepat (server Linux)
 
 ```bash
-git clone https://github.com/your-name/PanelPro.git
-cd PanelPro
-sudo bash scripts/install.sh --port 21000
+sudo bash scripts/install.sh --stack nginx --port 21000
 ```
 
-Installer menampilkan URL panel dengan **entry path rahasia** dan membuat
-akun admin pertama (kredensial di
-`/usr/local/panelpro/data/admin_credentials.txt` — simpan lalu hapus filenya).
+Jalankan dari folder project di VPS Ubuntu atau Debian. Pilih `--stack php`
+jika situs membutuhkan PHP-FPM dan MariaDB. Untuk membuka panel dari komputer
+Anda, gunakan `ssh -N -L 21000:127.0.0.1:21000 user@server`, lalu buka URL
+yang dicetak installer. Kredensial pertama ada di
+`/usr/local/panelpro/data/admin_credentials.txt`.
+
+Buka **Websites → Tambah Website**, lalu pilih **Website statis**, **PHP-FPM**,
+atau **Reverse proxy**. Setelah DNS mengarah ke VPS, gunakan menu **SSL / HTTPS**
+di baris website untuk menerbitkan sertifikat Let's Encrypt.
 
 Mode development (OS apa pun):
 
 ```bash
 python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-PANELPRO_HOME=./runtime python -m panelpro start --dev
+PANELPRO_HOME=./runtime PANELPRO_WWW_ROOT=./runtime/www python -m panelpro start --dev
 ```
 
 ## 🧭 Dokumentasi

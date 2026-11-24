@@ -166,10 +166,45 @@ def restore_site(archive_path: str, member: str, dest: str) -> dict:
             raise PanelError(f"Member not found in archive: {member}", 404)
         for m in members:
             candidate = (root / Path(m.name).relative_to(member)).resolve()
-            if not str(candidate).startswith(str(root)):
+            if not str(candidate).startswith(str(root) + __import__("os").sep) and candidate != root:
                 raise PanelError("Unsafe archive member detected.", 400)
         tf.extractall(dest_path, members=members)
     return {"restored": member, "dest": str(dest_path)}
+
+
+def import_sql_dump(db_type: str, database: str, dump_path: Path) -> None:
+    """Import a gzipped SQL dump produced by export_bundle into the engine."""
+    import gzip
+    import shutil as _shutil
+
+    # decompress to a plain .sql file so the CLI tools can read it from disk
+    # (mysql -e "source …" / psql -f) without needing stdin plumbing
+    sql_path = dump_path.with_suffix("")
+    with gzip.open(dump_path, "rb") as src, open(sql_path, "wb") as dst:
+        _shutil.copyfileobj(src, dst)
+    try:
+        if db_type == "mysql":
+            from panelpro.services.dbmgr import _mysql_client_args
+
+            args, env = _mysql_client_args()
+            res = run([*args, database, "-e", f"source {sql_path}"], timeout=1800, env=env)
+            if res.code != 0:
+                raise PanelError(f"mysql import failed: {res.stderr[-300:]}", 500)
+            return
+        if db_type == "postgres":
+            from panelpro.services.dbmgr import _psql_file_args
+
+            for args in _psql_file_args(database, str(sql_path)):
+                res = run(args, timeout=1800)
+                if res.code == 0:
+                    return
+            raise PanelError(f"postgres import failed: {res.stderr[-300:]}", 500)
+        raise PanelError(f"Unsupported dump engine: {db_type}", 400)
+    finally:
+        try:
+            sql_path.unlink()
+        except OSError:
+            pass
 
 
 def backup_due_check_job() -> None:

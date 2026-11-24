@@ -1,42 +1,64 @@
 /* Websites page: CRUD, vhost editor, domains, proxy, PHP, logs, SSL deploy */
 PP.pages = PP.pages || {};
+function newSiteForm(server = '') {
+  return { domain: '', aliases: '', mode: 'static', server, php_version: '', proxy_target: '',
+    withDb: false, db_name: '', db_user: '', db_password: '' };
+}
+
 PP.pages.sites = {
   data: () => ({
-    sites: [], serverStatus: null, busy: true,
-    showCreate: false, creating: false,
-    form: { domain: '', aliases: '', php_version: '', server: 'nginx', withDb: false, db_name: '', db_user: '', db_password: '' },
+    sites: [], servers: [], busy: true, loadError: '', reloading: false,
+    showCreate: false, creating: false, createError: '', form: newSiteForm(),
     phpVersions: [],
     editor: { open: false, site: null, path: '', content: '', saving: false },
     logs: { open: false, site: null, type: 'access', text: '' },
     domains: { open: false, site: null, value: '' },
     proxy: { open: false, site: null, target: '' },
-    sslList: [], sslFor: null, showSslPick: false,
+    sslList: [], sslFor: null, showSslPick: false, sslSaving: false, changingSites: {},
   }),
+  computed: {
+    canManage() { return ['admin', 'operator'].includes(PP.store.user?.role); },
+    canEditConfig() { return PP.store.user?.role === 'admin'; },
+    activeServers() { return this.servers.filter(server => server.active); },
+    activePhp() { return this.phpVersions.filter(version => version.fpm_active); },
+  },
   methods: {
     async load() {
+      this.loadError = '';
       try {
-        this.sites = await PP.api('sites');
-        this.serverStatus = await PP.api('sites/server-status');
-        try { this.phpVersions = await PP.api('php/versions'); } catch (e) { /* ignore */ }
-      } catch (e) { PP.ui.error(PP.t('common.error'), e.message); }
-      this.busy = false;
+        const [sites, status, php] = await Promise.all([
+          PP.api('sites'), PP.api('sites/server-status'), PP.api('php/versions').catch(() => []),
+        ]);
+        this.sites = sites;
+        this.servers = status.servers;
+        this.phpVersions = php;
+      } catch (e) { this.loadError = e.message; }
+      finally { this.busy = false; }
     },
-    async reloadServer() {
+    async reloadServer(server) {
+      this.reloading = true;
       try {
-        await PP.api('sites/reload', { method: 'POST' });
-        PP.ui.success('Webserver reloaded');
+        await PP.api('sites/reload', { method: 'POST', params: { server } });
+        PP.ui.success(PP.t('sites.reloaded'), server);
       } catch (e) { PP.ui.error(PP.t('common.error'), e.message); }
+      finally { this.reloading = false; }
     },
-    openCreate() { this.showCreate = true; },
+    openCreate() {
+      this.form = newSiteForm(this.activeServers[0]?.server);
+      this.createError = '';
+      this.showCreate = true;
+    },
     async create() {
-      if (!this.form.domain) return;
+      if (this.creating) return;
       this.creating = true;
+      this.createError = '';
       try {
         const body = {
           domain: this.form.domain.trim(),
           aliases: this.form.aliases.split(',').map(s => s.trim()).filter(Boolean),
           server: this.form.server,
-          php_version: this.form.php_version || null,
+          php_version: this.form.mode === 'php' ? this.form.php_version : null,
+          proxy_target: this.form.mode === 'proxy' ? this.form.proxy_target.trim() : null,
           create_db: this.form.withDb ? {
             type: 'mysql',
             name: this.form.db_name,
@@ -46,14 +68,14 @@ PP.pages.sites = {
         };
         const res = await PP.api('sites', { method: 'POST', body });
         this.showCreate = false;
-        this.form = { domain: '', aliases: '', php_version: '', server: 'nginx', withDb: false, db_name: '', db_user: '', db_password: '' };
+        this.form = newSiteForm();
         PP.ui.success(PP.t('sites.create'), res.site.root);
         if (res.db && res.db.password) {
           PP.ui.toast('DB: ' + res.db.database + ' / ' + res.db.user, res.db.password, 'warn', 15000);
         }
-        this.load();
-      } catch (e) { PP.ui.error(PP.t('common.error'), e.message); }
-      this.creating = false;
+        await this.load();
+      } catch (e) { this.createError = e.message; }
+      finally { this.creating = false; }
     },
     async del(site) {
       const ok = await PP.ui.confirm(PP.t('common.confirmDelete'), site.name);
@@ -64,10 +86,12 @@ PP.pages.sites = {
       } catch (e) { PP.ui.error(PP.t('common.error'), e.message); }
     },
     async toggle(site) {
+      this.changingSites[site.id] = true;
       try {
         await PP.api('sites/' + site.id + '/toggle', { method: 'POST' });
-        this.load();
+        await this.load();
       } catch (e) { PP.ui.error(PP.t('common.error'), e.message); }
+      finally { delete this.changingSites[site.id]; }
     },
     async openConf(site) {
       try {
@@ -105,18 +129,20 @@ PP.pages.sites = {
     async addDomain() {
       if (!this.domains.value) return;
       try {
-        await PP.api('sites/' + this.domains.site.id + '/domains', {
+        const data = await PP.api('sites/' + this.domains.site.id + '/domains', {
           method: 'POST', body: { domain: this.domains.value.trim() },
         });
+        this.domains.site.aliases = data.aliases;
         this.domains.value = '';
         this.load();
       } catch (e) { PP.ui.error(PP.t('common.error'), e.message); }
     },
     async removeDomain(alias) {
       try {
-        await PP.api('sites/' + this.domains.site.id + '/domains/remove', {
+        const data = await PP.api('sites/' + this.domains.site.id + '/domains/remove', {
           method: 'POST', body: { domain: alias },
         });
+        this.domains.site.aliases = data.aliases;
         this.load();
       } catch (e) { PP.ui.error(PP.t('common.error'), e.message); }
     },
@@ -132,28 +158,46 @@ PP.pages.sites = {
         this.load();
       } catch (e) { PP.ui.error(PP.t('common.error'), e.message); }
     },
-    async setPhp(site, version) {
+    async setPhp(site, control) {
+      this.changingSites[site.id] = true;
       try {
-        await PP.api('sites/' + site.id + '/php', { method: 'POST', body: { version: version || null } });
-        this.load();
-      } catch (e) { PP.ui.error(PP.t('common.error'), e.message); }
+        await PP.api('sites/' + site.id + '/php', { method: 'POST', body: { version: control.value || null } });
+        await this.load();
+      } catch (e) {
+        control.value = site.php_version || '';
+        PP.ui.error(PP.t('common.error'), e.message);
+      } finally { delete this.changingSites[site.id]; }
     },
     async setHttps(site, value) {
+      this.sslSaving = true;
       try {
-        await PP.api('sites/' + site.id + '/https', { method: 'POST', body: { force: value } });
+        const data = await PP.api('sites/' + site.id + '/https', { method: 'POST', body: { force: value } });
+        this.sslFor.force_https = data.force_https;
+        await this.load();
       } catch (e) { PP.ui.error(PP.t('common.error'), e.message); }
-      this.load();
+      finally { this.sslSaving = false; }
     },
     openSsl(site) {
       this.sslFor = site;
       PP.api('ssl').then(data => { this.sslList = data.certs; this.showSslPick = true; }).catch(e => PP.ui.error(PP.t('common.error'), e.message));
     },
     async deploySsl(certId) {
+      this.sslSaving = true;
       try {
         await PP.api('sites/' + this.sslFor.id + '/ssl', { method: 'POST', body: { cert_id: certId } });
         this.showSslPick = false;
-        this.load();
+        await this.load();
       } catch (e) { PP.ui.error(PP.t('common.error'), e.message); }
+      finally { this.sslSaving = false; }
+    },
+    async detachSsl() {
+      this.sslSaving = true;
+      try {
+        await PP.api('sites/' + this.sslFor.id + '/ssl/remove', { method: 'POST' });
+        this.showSslPick = false;
+        await this.load();
+      } catch (e) { PP.ui.error(PP.t('common.error'), e.message); }
+      finally { this.sslSaving = false; }
     },
   },
   mounted() { this.load(); },
@@ -161,12 +205,17 @@ PP.pages.sites = {
   <div>
     <div class="page-head">
       <h1>{{ PP.t('menu.sites') }}</h1>
-      <span v-if="serverStatus" class="badge" :class="serverStatus.active ? 'green' : 'gray'">
-        {{ serverStatus.server }}: {{ serverStatus.active ? 'active' : 'down' }}</span>
+      <span v-for="server in servers" :key="server.server" class="badge" :class="server.active ? 'green' : 'gray'">
+        {{ server.server }} · {{ PP.t(server.active ? 'common.enabled' : 'common.disabled') }}</span>
       <span class="spacer"></span>
-      <button class="btn" @click="reloadServer">⟳ webserver</button>
-      <button class="btn primary" @click="openCreate">+ {{ PP.t('sites.create') }}</button>
+      <template v-if="canManage">
+        <button v-for="server in activeServers" :key="server.server" class="btn" :disabled="reloading"
+                @click="reloadServer(server.server)">{{ PP.t('sites.reload') }} {{ server.server }}</button>
+        <button class="btn primary" :disabled="!activeServers.length" @click="openCreate">+ {{ PP.t('sites.create') }}</button>
+      </template>
     </div>
+    <p v-if="loadError" class="muted" role="alert">{{ loadError }} <button class="btn small" @click="load">{{ PP.t('sites.retry') }}</button></p>
+    <p v-else-if="!busy && !activeServers.length" class="muted" role="status">{{ PP.t('sites.noWebserver') }}</p>
 
     <p-table :cols="[
         { key: 'name', label: PP.t('sites.domain') },
@@ -175,69 +224,94 @@ PP.pages.sites = {
         { key: 'ssl', label: 'SSL', width: '110px' },
         { key: 'status', label: PP.t('common.status'), width: '110px' },
         { key: 'actions', label: PP.t('common.actions'), cls: 'actions' }]"
-      :rows="sites">
+      :rows="sites" :empty="PP.t(busy ? 'common.loading' : 'sites.empty')">
 
       <template #col-name="{ row }">
-        <div>
-          <div class="mono">{{ row.name }}</div>
+        <div class="site-domain-cell">
+          <a v-if="row.enabled && !row.name.startsWith('*')" :href="(row.ssl ? 'https://' : 'http://') + row.name" class="mono" target="_blank" rel="noopener noreferrer">{{ row.name }}</a>
+          <span v-else class="mono">{{ row.name }}</span>
           <div class="small faint" v-if="row.aliases && row.aliases.length">{{ row.aliases.join(', ') }}</div>
+          <router-link v-if="canManage" :to="{ name: 'files', query: { path: row.root } }" class="small mono">{{ row.root }}</router-link>
         </div>
       </template>
       <template #col-php="{ row }">
-        <select class="select" style="padding:3px 6px; font-size:12px" :value="row.php_version || ''"
-                @change="setPhp(row, $event.target.value)">
+        <span v-if="row.proxy_target">{{ PP.t('sites.proxy') }}</span>
+        <select v-else-if="canManage" class="select site-php-select" :value="row.php_version || ''"
+                :aria-label="PP.t('sites.phpVersion') + ' ' + row.name" :disabled="changingSites[row.id]"
+                @change="setPhp(row, $event.target)">
           <option value="">—</option>
-          <option v-for="v in phpVersions" :key="v.version" :value="v.version">{{ v.version }}</option>
+          <option v-if="row.php_version && !activePhp.some(v => v.version === row.php_version)"
+                  :value="row.php_version" disabled>{{ row.php_version }}</option>
+          <option v-for="v in activePhp" :key="v.version" :value="v.version">{{ v.version }}</option>
         </select>
+        <span v-else>{{ row.php_version || '—' }}</span>
       </template>
       <template #col-ssl="{ row }">
         <span v-if="row.ssl" class="badge green">{{ row.ssl.issuer }}</span>
         <span v-else class="badge gray">—</span>
       </template>
       <template #col-status="{ row }">
-        <p-switch :modelValue="row.enabled" @update:modelValue="toggle(row)"></p-switch>
+        <button v-if="canManage" class="btn small" :class="{ active: row.enabled }" :aria-pressed="row.enabled"
+                :disabled="changingSites[row.id]" @click="toggle(row)">{{ PP.t(row.enabled ? 'common.enabled' : 'common.disabled') }}</button>
+        <span v-else>{{ PP.t(row.enabled ? 'common.enabled' : 'common.disabled') }}</span>
       </template>
       <template #col-actions="{ row }">
-        <button class="btn small" @click="openConf(row)">⚙</button>
-        <button class="btn small" @click="openDomains(row)">🌐</button>
-        <button class="btn small" @click="openProxy(row)">🔀</button>
-        <button class="btn small" @click="openSsl(row)">🔒</button>
-        <button class="btn small" @click="openLogs(row)">📜</button>
-        <button class="btn small danger" @click="del(row)">🗑</button>
+        <button v-if="canEditConfig" class="btn small" :disabled="!row.enabled" :title="PP.t('sites.editConf')" :aria-label="PP.t('sites.editConf')" @click="openConf(row)">⚙</button>
+        <button v-if="canManage" class="btn small" :title="PP.t('sites.aliases')" :aria-label="PP.t('sites.aliases')" @click="openDomains(row)">🌐</button>
+        <button v-if="canManage" class="btn small" :title="PP.t('sites.proxy')" :aria-label="PP.t('sites.proxy')" @click="openProxy(row)">🔀</button>
+        <button v-if="canManage" class="btn small" title="SSL / HTTPS" aria-label="SSL / HTTPS" @click="openSsl(row)">🔒</button>
+        <button class="btn small" :title="PP.t('sites.logs')" :aria-label="PP.t('sites.logs')" @click="openLogs(row)">📜</button>
+        <button v-if="canManage" class="btn small danger" :title="PP.t('common.confirmDelete')" :aria-label="PP.t('common.confirmDelete')" @click="del(row)">🗑</button>
       </template>
     </p-table>
 
-    <p-modal :open="showCreate" :title="PP.t('sites.create')" size="lg" @close="showCreate = false">
+    <p-modal :open="showCreate" :title="PP.t('sites.create')" size="lg" @close="!creating && (showCreate = false)">
+      <form id="create-website" @submit.prevent="create">
       <div class="form-row">
-        <div class="field"><label>{{ PP.t('sites.domain') }}</label>
-          <input class="input mono" v-model="form.domain" placeholder="example.com"></div>
-        <div class="field"><label>{{ PP.t('sites.aliases') }} ({{ PP.t('common.optional') }})</label>
-          <input class="input mono" v-model="form.aliases" placeholder="www.example.com, api.example.com"></div>
+        <div class="field"><label for="site-domain">{{ PP.t('sites.domain') }}</label>
+          <input id="site-domain" class="input mono" v-model.trim="form.domain" spellcheck="false" required placeholder="example.com"></div>
+        <div class="field"><label for="site-aliases">{{ PP.t('sites.aliases') }} ({{ PP.t('common.optional') }})</label>
+          <input id="site-aliases" class="input mono" v-model="form.aliases" spellcheck="false" placeholder="www.example.com, api.example.com"></div>
       </div>
       <div class="form-row">
-        <div class="field"><label>Server</label>
-          <select class="select" v-model="form.server">
-            <option value="nginx">nginx</option><option value="apache">apache</option>
+        <div class="field"><label for="site-server">Webserver</label>
+          <select id="site-server" class="select" v-model="form.server">
+            <option v-for="server in activeServers" :key="server.server" :value="server.server">{{ server.server }}</option>
           </select></div>
-        <div class="field"><label>{{ PP.t('sites.phpVersion') }}</label>
-          <select class="select" v-model="form.php_version">
-            <option value="">—</option>
-            <option v-for="v in phpVersions" :key="v.version" :value="v.version">{{ v.version }}</option>
+        <div class="field"><label for="site-mode">{{ PP.t('sites.mode') }}</label>
+          <select id="site-mode" class="select" v-model="form.mode">
+            <option value="static">{{ PP.t('sites.static') }}</option>
+            <option value="php">PHP-FPM</option>
+            <option value="proxy">{{ PP.t('sites.proxy') }}</option>
           </select></div>
       </div>
-      <div class="checkbox-row mb">
-        <p-switch v-model="form.withDb"></p-switch>
+      <div class="field" v-if="form.mode === 'php'">
+        <label for="site-runtime">{{ PP.t('sites.phpVersion') }}</label>
+        <select id="site-runtime" class="select" v-model="form.php_version" required>
+          <option value="" disabled>{{ PP.t(activePhp.length ? 'sites.selectPhp' : 'sites.noPhp') }}</option>
+          <option v-for="v in activePhp" :key="v.version" :value="v.version">{{ v.version }}</option>
+        </select>
+      </div>
+      <div class="field" v-if="form.mode === 'proxy'">
+        <label for="site-backend">{{ PP.t('sites.backend') }}</label>
+        <input id="site-backend" class="input mono" type="url" v-model.trim="form.proxy_target" required placeholder="http://127.0.0.1:3000">
+        <span class="small faint">{{ PP.t('sites.backendHint') }}</span>
+      </div>
+      <label class="checkbox-row mb">
+        <input type="checkbox" v-model="form.withDb">
         <span>{{ PP.t('sites.withDb') }} (MySQL)</span>
-      </div>
+      </label>
       <div class="form-row" v-if="form.withDb">
-        <div class="field"><label>DB name</label><input class="input mono" v-model="form.db_name"></div>
-        <div class="field"><label>DB user</label><input class="input mono" v-model="form.db_user"></div>
-        <div class="field"><label>DB pass ({{ PP.t('common.optional') }})</label><input class="input mono" v-model="form.db_password"></div>
+        <div class="field"><label for="site-db">Database</label><input id="site-db" class="input mono" v-model="form.db_name"></div>
+        <div class="field"><label for="site-db-user">{{ PP.t('common.username') }}</label><input id="site-db-user" class="input mono" v-model="form.db_user"></div>
+        <div class="field"><label for="site-db-password">{{ PP.t('common.password') }} ({{ PP.t('common.optional') }})</label><input id="site-db-password" class="input mono" type="password" autocomplete="new-password" v-model="form.db_password"></div>
       </div>
+      <p v-if="createError" class="site-error" role="alert">{{ createError }}</p>
+      </form>
       <template #foot>
-        <button class="btn" @click="showCreate = false">{{ PP.t('common.cancel') }}</button>
-        <button class="btn primary" :disabled="creating || !form.domain" @click="create">
-          {{ creating ? '…' : PP.t('common.create') }}</button>
+        <button class="btn" :disabled="creating" @click="showCreate = false">{{ PP.t('common.cancel') }}</button>
+        <button class="btn primary" type="submit" form="create-website" :disabled="creating || !form.server">
+          {{ PP.t(creating ? 'common.loading' : 'common.create') }}</button>
       </template>
     </p-modal>
 
@@ -272,8 +346,8 @@ PP.pages.sites = {
 
     <p-modal :open="proxy.open" :title="PP.t('sites.proxy')" @close="proxy.open = false">
       <div class="field">
-        <label>{{ PP.t('sites.noProxy') }} → {{ PP.t('sites.proxy') }} (http://127.0.0.1:3000)</label>
-        <input class="input mono" v-model="proxy.target" placeholder="http://127.0.0.1:3000">
+        <label for="edit-site-backend">{{ PP.t('sites.backend') }} ({{ PP.t('common.optional') }})</label>
+        <input id="edit-site-backend" class="input mono" v-model="proxy.target" placeholder="http://127.0.0.1:3000">
       </div>
       <template #foot>
         <button class="btn" @click="proxy.open = false">{{ PP.t('common.cancel') }}</button>
@@ -282,12 +356,19 @@ PP.pages.sites = {
     </p-modal>
 
     <p-modal :open="showSslPick" :title="PP.t('ssl.deploy')" @close="showSslPick = false">
+      <label v-if="sslFor?.ssl" class="checkbox-row mb">
+        <input type="checkbox" :checked="sslFor.force_https" :disabled="sslSaving" @change="$event.target.checked = sslFor.force_https; setHttps(sslFor, !sslFor.force_https)">
+        <span>{{ PP.t('sites.forceHttps') }}</span>
+      </label>
       <div class="btn-row" v-if="sslList.length" style="flex-direction:column; align-items:stretch">
-        <button v-for="c in sslList" :key="c.id" class="btn" @click="deploySsl(c.id)">
+        <button v-for="c in sslList" :key="c.id" class="btn" :disabled="sslSaving || sslFor?.ssl?.cert_id === c.id" @click="deploySsl(c.id)">
           {{ c.name }} <span class="faint small">({{ c.domain }})</span>
         </button>
       </div>
-      <p v-else class="muted">—</p>
+      <template #foot>
+        <button v-if="sslFor?.ssl" class="btn danger" :disabled="sslSaving" @click="detachSsl">{{ PP.t('sites.detachSsl') }}</button>
+        <router-link v-if="sslFor?.enabled" class="btn primary" :to="{ name: 'ssl', query: { site: sslFor.id } }">{{ PP.t('ssl.letsencrypt') }}</router-link>
+      </template>
     </p-modal>
   </div>`,
 };

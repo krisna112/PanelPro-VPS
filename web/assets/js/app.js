@@ -34,6 +34,16 @@
       { route: 'settings', icon: '⚙️' },
       { route: 'plugins', icon: '🧩' },
     ]},
+    { group: 'menu.group.pro', items: [
+      { route: 'daemon', icon: '🩺' },
+      { route: 'traffic', icon: '📊' },
+      { route: 'waf', icon: '🧱' },
+      { route: 'tamper', icon: '🔐' },
+      { route: 'lb', icon: '⚖️' },
+      { route: 'migration', icon: '🚚' },
+      { route: 'replication', icon: '🗃️' },
+      { route: 'fleet', icon: '🖥️' },
+    ]},
   ];
 
   const routes = [

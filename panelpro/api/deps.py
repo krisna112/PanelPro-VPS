@@ -32,10 +32,6 @@ class AuthCtx:
 
 
 def client_ip(request: Request) -> str:
-    if settings_store.get_setting("trust_proxy"):
-        forwarded = request.headers.get("x-forwarded-for", "")
-        if forwarded:
-            return forwarded.split(",")[0].strip()
     return request.client.host if request.client else "unknown"
 
 

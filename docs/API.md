@@ -29,7 +29,7 @@ Roles: `viewer` (read-only) < `operator` (manage) < `admin` (everything).
 | dashboard | `GET /dashboard/summary` |
 | system | `GET /system/info`, `GET /system/services`, `POST /system/services/{unit}/{action}`, `GET /system/services/{unit}/journal`, `GET /system/processes`, `POST /system/processes/kill`, `POST /system/panel/update` |
 | files | `GET /files/list|read|search|download`, `POST /files/write|mkdir|rename|copy|delete|chmod|chown|compress|extract|upload|trash-empty` |
-| sites | `GET /sites`, `POST /sites`, `POST /sites/{id}/{delete,toggle,conf,domains,domains/remove,proxy,php,https,ssl,logs,reload}`, `GET /sites/server-status` |
+| sites | `GET /sites`, `POST /sites`, `GET /sites/{id}/{conf,logs}`, `POST /sites/{id}/{delete,toggle,conf,domains,domains/remove,proxy,php,https,ssl,ssl/remove}`, `GET /sites/server-status`, `POST /sites/reload?server=nginx` |
 | databases | `GET /databases`, `GET /databases/engines`, `POST /databases`, `POST /databases/{name}/delete`, `GET/POST /databases/users…`, `GET /databases/redis/info`, `POST /databases/redis/password`, `POST /databases/root-password` |
 | php | `GET /php/versions`, `GET/POST /php/versions/{v}/…` (extensions, ini, pool, restart), `POST /php/install` |
 | ftp | `GET/POST /ftp`, `POST /ftp/{id}/{password,delete}` |

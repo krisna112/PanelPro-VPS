@@ -164,6 +164,22 @@ class PostgresManager:
             raise PanelError(f"PostgreSQL error: {res.stderr.strip()[-300:]}", 500)
         return res.stdout
 
+
+def _psql_prefixes() -> list[list[str]]:
+    """Candidate argv prefixes for running psql as the postgres user."""
+    return [
+        ["runuser", "-u", "postgres", "--"],
+        ["sudo", "-u", "postgres"],
+    ]
+
+
+def _psql_file_args(database: str, sql_file: str) -> list[list[str]]:
+    """Full argv candidates to run a SQL file inside one database."""
+    return [
+        [*prefix, "psql", "-v", "ON_ERROR_STOP=1", "-d", database, "-f", sql_file]
+        for prefix in _psql_prefixes()
+    ]
+
     def list_databases(self) -> list[dict]:
         out = self._psql(
             "SELECT datname FROM pg_database WHERE NOT datistemplate AND datname != 'postgres';"

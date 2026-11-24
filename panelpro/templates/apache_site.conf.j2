@@ -1,46 +1,55 @@
-# Managed by PanelPro for {{ domain }} — edit via the panel.
-{% if force_https and ssl_cert %}
-<VirtualHost *:80>
-    ServerName {{ domain }}
-{% for a in aliases %}    ServerAlias {{ a }}
-{% endfor %}    Redirect permanent / https://{{ domain }}/
-</VirtualHost>
-
-<VirtualHost *:443>
+# Managed by PanelPro for {{ domain }}. Website settings regenerate this file.
+{% set has_tls = ssl_cert and ssl_key %}
+{% for tls in ([false, true] if has_tls else [false]) %}
+<VirtualHost *:{{ 443 if tls else 80 }}>
     ServerName {{ domain }}
 {% for a in aliases %}    ServerAlias {{ a }}
 {% endfor %}
+{% if tls %}
     SSLEngine on
-    SSLCertificateFile    {{ ssl_cert }}
-    SSLCertificateKeyFile {{ ssl_key }}
-{% else %}
-<VirtualHost *:80>
-    ServerName {{ domain }}
-{% for a in aliases %}    ServerAlias {{ a }}
-{% endfor %}
+    SSLCertificateFile    {{ ssl_cert | config_path }}
+    SSLCertificateKeyFile {{ ssl_key | config_path }}
 {% endif %}
-    DocumentRoot {{ root }}
+    DocumentRoot {{ root | config_path }}
 
-    <Directory {{ root }}>
+    <Directory {{ root | config_path }}>
         Options -Indexes +FollowSymLinks
         AllowOverride All
         Require all granted
     </Directory>
 
-    ErrorLog  {{ error_log }}
-    CustomLog {{ access_log }} combined
+    ErrorLog  {{ error_log | config_path }}
+    CustomLog {{ access_log | config_path }} combined
 
-{% if proxy_target %}
+    <LocationMatch "/\.(?!well-known/acme-challenge/[A-Za-z0-9_-]+$)">
+        Require all denied
+    </LocationMatch>
+{% if has_tls and force_https and not tls %}
+    RedirectMatch permanent "^/(?!\.well-known/acme-challenge/[A-Za-z0-9_-]+$)(.*)$" "https://{{ domain }}/$1"
+{% elif proxy_target %}
+{% if proxy_ca_bundle %}
+    SSLProxyEngine On
+    SSLProxyVerify require
+    SSLProxyCheckPeerName On
+    SSLProxyCACertificateFile {{ proxy_ca_bundle | config_path }}
+{% endif %}
     ProxyPreserveHost On
-    ProxyPass        / {{ proxy_target }}/
-    ProxyPassReverse / {{ proxy_target }}/
+    ProxyPass /.well-known/acme-challenge/ !
+    ProxyPass        / {{ proxy_target.rstrip('/') }}/
+    ProxyPassReverse / {{ proxy_target.rstrip('/') }}/
 {% elif php_version %}
+    DirectoryIndex index.php index.html index.htm
     <FilesMatch \.php$>
         SetHandler "proxy:unix:{{ php_socket }}|fcgi://localhost"
     </FilesMatch>
-{% endif %}
-
-    <FilesMatch "^\.">
+    <FilesMatch "(?i)\.(?!(?-i:php)$)ph(?:p[0-9]*|tml|ar)(?:$|\.)">
         Require all denied
     </FilesMatch>
+{% else %}
+    DirectoryIndex index.html index.htm
+    <FilesMatch "(?i)\.ph(?:p[0-9]*|tml|ar)(?:$|\.)">
+        Require all denied
+    </FilesMatch>
+{% endif %}
 </VirtualHost>
+{% endfor %}

@@ -12,6 +12,7 @@ from pathlib import Path
 
 _TEST_HOME = Path(tempfile.mkdtemp(prefix="panelpro-tests-"))
 os.environ["PANELPRO_HOME"] = str(_TEST_HOME)
+os.environ["PANELPRO_WWW_ROOT"] = str(_TEST_HOME / "www")
 
 import pytest  # noqa: E402
 
@@ -20,9 +21,9 @@ import pytest  # noqa: E402
 def client():
     from fastapi.testclient import TestClient
 
-    from panelpro.main import app
+    from panelpro.main import create_app
 
-    with TestClient(app) as test_client:
+    with TestClient(create_app()) as test_client:
         yield test_client
 
 

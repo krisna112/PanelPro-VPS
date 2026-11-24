@@ -1,89 +1,111 @@
-# Installation & Operations Guide
+# Installation and website deployment
 
 ## Requirements
 
-* A Linux server (Ubuntu 20.04+/Debian 11+/CentOS Stream 9+/RHEL-family)
-  with root access — the panel manages system services, so production
-  targets Linux.
-* Python 3.10+ (installed automatically by `install.sh`).
-* ~150 MB free disk + whatever your sites need.
+Use a Linux VPS with systemd, root access, and Python 3.10 or later. The package
+installer targets Ubuntu 22.04+ and Debian 12+. On RHEL-family hosts, the
+installer uses the distro's Python 3.11 packages and supports the Nginx option.
+The bundled PHP-FPM and MariaDB setup uses Debian-family packages and sockets.
 
-## Production install
+## Install on a fresh VPS
 
-```bash
-git clone https://github.com/your-name/PanelPro.git
-cd PanelPro
-sudo bash scripts/install.sh            # defaults: /usr/local/panelpro, port 21000
-sudo bash scripts/install.sh --port 24000 --dir /opt/panelpro
-```
-
-What the installer does:
-
-1. Installs Python 3 + base tools via the distro package manager.
-2. Copies `panelpro/` (backend), `web/` (frontend), `scripts/` into the
-   install root.
-3. Creates a virtualenv and installs dependencies.
-4. Generates the panel database, secret key, **random admin password** and
-   **random security entry path**.
-5. Installs a `panelpro.service` systemd unit (auto-start + restart).
-6. Opens the chosen port in ufw/firewalld when a firewall is active.
-
-After the install:
-
-* Panel URL: `http://<server-ip>:21000/<entry-path>` (printed at the end).
-* Admin credentials: `/usr/local/panelpro/data/admin_credentials.txt`
-  (read it, save the password, delete the file).
-
-## Offline frontend assets
-
-The SPA loads Vue/vue-router/xterm from a CDN with automatic fallback.
-For fully offline servers run once:
+Copy or clone the complete PanelPro repository onto the VPS, then run this
+command from the checkout.
 
 ```bash
-bash scripts/vendor_assets.sh   # downloads into web/assets/vendor/
+sudo bash scripts/install.sh --stack nginx --port 21000
 ```
 
-`index.html` prefers the local vendor copies automatically.
+Use `--stack php` on Ubuntu or Debian for Nginx, Certbot, PHP-FPM, and MariaDB.
+Use `--stack none` to reuse a webserver you already manage. The installer checks
+the panel health endpoint and prints the private URL after startup. Website
+traffic uses ports 80 and 443. Configure those ports in the VPS firewall and
+cloud security group as needed.
 
-## Update & uninstall
+The panel itself binds to `127.0.0.1` by default. From your workstation, open an
+SSH tunnel and then open the installation URL in your browser.
 
 ```bash
-sudo bash scripts/update.sh              # refresh code + deps + restart
-sudo bash scripts/uninstall.sh           # keep data (DB/secrets)
-sudo bash scripts/uninstall.sh --purge   # remove everything
+ssh -N -L 21000:127.0.0.1:21000 user@server
 ```
 
-## CLI reference (`panelpro`)
+Read the first admin password from
+`/usr/local/panelpro/data/admin_credentials.txt` on the server. Delete the file
+after saving the credentials. The path follows your `--dir` option.
 
-| Command | Purpose |
+To serve the panel at a dedicated HTTPS hostname, keep it on loopback, put an
+HTTPS reverse proxy in front, and enable `trust_proxy` in panel settings.
+Configure the proxy to set the forwarded scheme and client address, then
+restart `panelpro`. The launcher trusts forwarded headers from loopback.
+
+## Publish a website
+
+1. Point your domain's A record at the VPS. Set an AAAA record if the VPS
+   serves IPv6. Add records for each alias you intend to serve.
+2. In **Websites → Tambah Website**, pick an active webserver and the
+   deployment type.
+   - **Website statis** serves the contents of the folder shown below the
+     domain. Use the folder link to upload a static HTML project or the
+     output of a frontend build. Replace the generated `index.html`.
+   - **PHP-FPM** routes PHP requests to the selected running FPM version.
+     Upload the public entry point and assets to the website folder. Keep
+     application secrets and any private files outside that folder. The
+     optional database step provisions a local MySQL or MariaDB database and
+     user and returns its credentials when creation succeeds.
+   - **Reverse proxy** connects to an application already listening on the VPS.
+     Start your Node.js, Python, or other application under a service manager.
+     Use its internal URL, for example `http://127.0.0.1:3000`.
+3. Open **SSL / HTTPS** on the website row, then select **Let's Encrypt**.
+   The panel pre-fills the domains and website folder. HTTP-01 requires the
+   requested domains to reach this website over port 80. For wildcard
+   certificates use DNS-01 and install the appropriate Certbot plugin.
+4. Test HTTPS for the primary domain and aliases before enabling
+   **Paksa HTTPS**. Check the per-site access and error logs if a request fails.
+
+With Apache on Debian or Ubuntu, enable the modules used by your deployment
+(`ssl` for HTTPS, `proxy` with `proxy_http` for reverse proxy, and `proxy_fcgi`
+for PHP-FPM) and restart Apache before creating sites. Admins can edit vhosts on
+active sites. Changing website settings regenerates the managed configuration.
+
+## Update and diagnostics
+
+```bash
+sudo bash scripts/update.sh
+sudo /usr/local/panelpro/venv/bin/panelpro doctor
+sudo journalctl -u panelpro -n 60
+```
+
+Run the updater from the newer checkout. Set `PANELPRO_HOME` when using a
+custom install path. If a previous install left the systemd launcher missing,
+rerun the installer with your chosen directory and port to repair it.
+
+```bash
+sudo bash scripts/uninstall.sh           # keep stored data
+sudo bash scripts/uninstall.sh --purge   # also delete the install directory
+```
+
+| CLI command | Purpose |
 | --- | --- |
-| `panelpro start [--host H] [--port P] [--dev]` | run the panel (systemd uses this) |
-| `panelpro reset-password [--username admin]` | print a fresh admin password, revoke sessions |
-| `panelpro set-port 21000` | change the panel port (restart required) |
-| `panelpro set-entry my-secret-path` | change the security entry path |
-| `panelpro backup-panel` | tar the panel DB + secret key |
-| `panelpro doctor` | environment check: tools found, DB, deps |
-| `panelpro version` | print version |
+| `panelpro start [--host H] [--port P] [--dev]` | Run the server |
+| `panelpro reset-password [--username admin]` | Generate a password and revoke existing sessions |
+| `panelpro set-port 21000` | Change the listener port, then restart the panel |
+| `panelpro set-entry my-secret-path` | Change the private entry path |
+| `panelpro backup-panel` | Archive the panel database and secrets |
+| `panelpro doctor` | Inspect the platform, database and available tools |
+| `panelpro version` | Print the installed version |
 
-The CLI lives in `venv/bin/panelpro` inside the install root
-(`/usr/local/panelpro/venv/bin/panelpro`).
-
-## Development mode
-
-Works on any OS (Windows/macOS/Linux) for API and UI work; Linux-only
-features degrade gracefully with informative errors.
+## Local development
 
 ```bash
 python -m venv .venv
-source .venv/bin/activate        # Windows PowerShell: .venv\Scripts\Activate.ps1
+source .venv/bin/activate
 pip install -r requirements.txt
-PANELPRO_HOME=./runtime python -m panelpro start --dev
+PANELPRO_HOME=./runtime PANELPRO_WWW_ROOT=./runtime/www python -m panelpro start --dev
 ```
 
-Then open the printed URL (dev entry path is generated on first run; find it
-with `sqlite3 runtime/data/panel.db "select value from settings where key='entry_path'"`).
-
-## Tests & lint
+On Windows, use `.venv\Scripts\Activate.ps1` and set `$env:PANELPRO_HOME`
+before running the launcher. Install frontend libraries locally with
+`bash scripts/vendor_assets.sh` when developing offline.
 
 ```bash
 pytest

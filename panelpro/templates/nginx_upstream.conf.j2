@@ -1,0 +1,7 @@
+# Managed by PanelPro — upstream pool {{ name }}
+upstream {{ name }} {
+{% for s in servers %}
+    server {{ s.host }}:{{ s.port }} weight={{ s.weight }};
+{% endfor %}
+    keepalive 16;
+}

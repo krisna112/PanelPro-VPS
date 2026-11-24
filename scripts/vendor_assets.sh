@@ -13,15 +13,23 @@ fetch() {
     return
   fi
   echo "  fetch  : $out"
-  curl -fsSL "$url" -o "$DEST/$out"
+  local temp
+  temp=$(mktemp "$DEST/.download.XXXXXXXX")
+  if curl -fsSL --retry 2 --max-time 60 "$url" -o "$temp"; then
+    chmod 0644 "$temp"
+    mv -f -- "$temp" "$DEST/$out"
+  else
+    rm -f -- "$temp"
+    return 1
+  fi
 }
 
 echo ">> Vendoring frontend assets into $DEST"
 
 fetch "https://cdn.jsdelivr.net/npm/vue@3.4.38/dist/vue.global.prod.js"       "vue.global.prod.js"
 fetch "https://cdn.jsdelivr.net/npm/vue-router@4.4.3/dist/vue-router.global.prod.js" "vue-router.global.prod.js"
-fetch "https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"            "xterm.min.js"
-fetch "https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.min.css"           "xterm.min.css"
-fetch "https://cdn.jsdelivr.net/npm/xterm@5.3.0/addon-fit/fit.min.js"        "xterm-fit.min.js"
+fetch "https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"                "xterm.min.js"
+fetch "https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css"               "xterm.min.css"
+fetch "https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js" "xterm-fit.min.js"
 
 echo ">> Done — index.html will prefer these local copies automatically."

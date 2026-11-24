@@ -1,108 +1,124 @@
 #!/usr/bin/env bash
-# =============================================================================
-# PanelPro installer — Ubuntu / Debian / CentOS / RHEL / Rocky / Alma
-# Original script, written from scratch for the PanelPro project.
-#
-#   curl -fsSL <raw-url>/scripts/install.sh | bash
-#   # or: bash install.sh [options]
-#
-# Options:
-#   --port N        panel port (default 21000)
-#   --dir PATH      install root (default /usr/local/panelpro)
-# =============================================================================
+# Install PanelPro from a complete checkout on a Linux systemd host.
 set -euo pipefail
 
 PANEL_PORT="${PANEL_PORT:-21000}"
+PANEL_HOST="${PANEL_HOST:-127.0.0.1}"
 INSTALL_DIR="${INSTALL_DIR:-/usr/local/panelpro}"
+STACK=none
 SOURCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --port) PANEL_PORT="$2"; shift 2 ;;
-    --dir)  INSTALL_DIR="$2"; shift 2 ;;
+    --port|--host|--dir|--stack)
+      if [[ $# -lt 2 ]]; then
+        echo "Missing value for $1" >&2
+        exit 1
+      fi
+      case "$1" in
+        --port) PANEL_PORT="$2" ;;
+        --host) PANEL_HOST="$2" ;;
+        --dir) INSTALL_DIR="$2" ;;
+        --stack) STACK="$2" ;;
+      esac
+      shift 2
+      ;;
+    --help)
+      echo "Usage: sudo bash scripts/install.sh [--port 21000] [--host 127.0.0.1] [--dir /usr/local/panelpro] [--stack none|nginx|php]"
+      exit 0
+      ;;
     *) echo "Unknown option: $1" >&2; exit 1 ;;
   esac
 done
 
-if [[ $EUID -ne 0 ]]; then
-  echo ">> Run as root (sudo bash install.sh)" >&2
+if [[ $EUID -ne 0 || ! -d /run/systemd/system ]]; then
+  echo "Run the installer as root on a Linux host running systemd." >&2
+  exit 1
+fi
+if [[ ! $PANEL_PORT =~ ^[1-9][0-9]{3,4}$ ]] || (( PANEL_PORT < 1024 || PANEL_PORT > 65535 )); then
+  echo "Panel port must be between 1024 and 65535." >&2
+  exit 1
+fi
+if [[ ! $PANEL_HOST =~ ^[a-zA-Z0-9_.:-]+$ || ! $INSTALL_DIR =~ ^/[a-zA-Z0-9._/-]+$ ]]; then
+  echo "Use a valid bind host and an absolute install directory without spaces." >&2
+  exit 1
+fi
+INSTALL_DIR="$(realpath -m -- "$INSTALL_DIR")"
+if [[ $INSTALL_DIR == / || ! -f "$SOURCE_DIR/panelpro/__main__.py" || ! -f "$SOURCE_DIR/requirements.txt" ]]; then
+  echo "Choose an application directory and run from the complete PanelPro checkout." >&2
+  exit 1
+fi
+if [[ $STACK != none && $STACK != nginx && $STACK != php ]]; then
+  echo "Unknown stack: $STACK" >&2
+  exit 1
+fi
+if [[ $STACK == php ]] && ! command -v apt-get >/dev/null 2>&1; then
+  echo "The PHP stack installer requires Debian or Ubuntu." >&2
   exit 1
 fi
 
-echo "=============================================================="
-echo " PanelPro installer"
-echo "   install dir : $INSTALL_DIR"
-echo "   panel port  : $PANEL_PORT"
-echo "=============================================================="
-
-# ---------------------------------------------------------------------------
-# 1. Base packages + Python 3.10+
-# ---------------------------------------------------------------------------
+PY=python3
 if command -v apt-get >/dev/null 2>&1; then
   export DEBIAN_FRONTEND=noninteractive
   apt-get update -qq
-  apt-get install -y -qq python3 python3-venv python3-pip curl ca-certificates \
-    cron unzip zip >/dev/null
-  PY=python3
+  apt-get install -y -qq python3 python3-venv python3-pip curl ca-certificates cron unzip zip
 elif command -v dnf >/dev/null 2>&1; then
-  dnf install -y -q python3 python3-pip curl cronie unzip zip >/dev/null
-  PY=python3
-elif command -v yum >/dev/null 2>&1; then
-  yum install -y -q python3 python3-pip curl cronie unzip zip >/dev/null
-  PY=python3
+  dnf install -y -q python3.11 python3.11-pip curl ca-certificates cronie unzip zip
+  PY=python3.11
 else
-  echo ">> Unsupported distro: install Python 3.10+ manually" >&2
+  echo "The installer requires apt-get or dnf." >&2
+  exit 1
+fi
+if ! "$PY" -c 'import sys; sys.exit(sys.version_info < (3, 10))'; then
+  echo "Python 3.10 or newer is required. Use Debian 12+ or Ubuntu 22.04+." >&2
   exit 1
 fi
 
-PY_VERSION=$($PY -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
-PY_MAJOR=$($PY -c 'import sys; print(sys.version_info.major)')
-if [[ "$PY_MAJOR" -lt 3 ]]; then
-  echo ">> Python 3 required, found: $PY_VERSION" >&2
-  exit 1
-fi
-echo ">> Python $PY_VERSION OK"
+case "$STACK" in
+  nginx|php)
+    if command -v apt-get >/dev/null 2>&1; then
+      packages=(nginx certbot)
+      if [[ $STACK == php ]]; then
+        packages+=(php-fpm php-mysql mariadb-server)
+      fi
+      apt-get install -y -qq "${packages[@]}"
+    else
+      dnf install -y -q nginx
+    fi
+    systemctl enable --now nginx
+    nginx -t
+    if [[ $STACK == php ]]; then
+      systemctl enable --now mariadb
+    fi
+    ;;
+esac
 
-# ---------------------------------------------------------------------------
-# 2. Copy application code
-# ---------------------------------------------------------------------------
 mkdir -p "$INSTALL_DIR"
-cp -r "$SOURCE_DIR"/panelpro "$INSTALL_DIR"/
-cp -r "$SOURCE_DIR"/web "$INSTALL_DIR"/
-cp -r "$SOURCE_DIR"/scripts "$INSTALL_DIR"/ 2>/dev/null || true
-cp "$SOURCE_DIR"/requirements.txt "$INSTALL_DIR"/ 2>/dev/null || true
+if [[ $SOURCE_DIR != "$INSTALL_DIR" ]]; then
+  cp -r "$SOURCE_DIR"/{panelpro,web,scripts} "$INSTALL_DIR/"
+  cp "$SOURCE_DIR/requirements.txt" "$INSTALL_DIR/"
+fi
+cd "$INSTALL_DIR"
+"$PY" -m venv venv
+venv/bin/python -m pip install --quiet -r requirements.txt
+bash scripts/vendor_assets.sh
 
-# ---------------------------------------------------------------------------
-# 3. Virtualenv + dependencies
-# ---------------------------------------------------------------------------
-$PY -m venv "$INSTALL_DIR/venv"
-PIP="$INSTALL_DIR/venv/bin/pip"
-"$PIP" install --quiet --upgrade pip
-"$PIP" install --quiet -r "$INSTALL_DIR/requirements.txt" || \
-  "$PIP" install fastapi 'uvicorn[standard]' sqlalchemy psutil bcrypt pyotp qrcode \
-                 cryptography paramiko jinja2 python-multipart httpx croniter
-echo ">> Dependencies installed"
-
-# ---------------------------------------------------------------------------
-# 4. Environment
-# ---------------------------------------------------------------------------
 export PANELPRO_HOME="$INSTALL_DIR"
-"$INSTALL_DIR/venv/bin/python" -c "
-from panelpro.config import CFG
-CFG.ensure_dirs()
-import os; os.environ.setdefault('PANELPRO_HOME', '$INSTALL_DIR')
-from panelpro.core.database import init_db
-init_db()
-print('>> Panel home ready:', CFG.home)
-"
+venv/bin/python -m panelpro set-port "$PANEL_PORT"
+install -d -m 0700 "$INSTALL_DIR/data" "$INSTALL_DIR/data/ssl" "$INSTALL_DIR/tmp" "$INSTALL_DIR/backup"
+cat > venv/bin/panelpro <<'LAUNCHER'
+#!/usr/bin/env bash
+set -euo pipefail
+panel_home="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+export PANELPRO_HOME="$panel_home"
+cd "$panel_home"
+exec "$panel_home/venv/bin/python" -m panelpro "$@"
+LAUNCHER
+chmod 0755 venv/bin/panelpro
 
-# ---------------------------------------------------------------------------
-# 5. systemd service
-# ---------------------------------------------------------------------------
 cat > /etc/systemd/system/panelpro.service <<UNIT
 [Unit]
 Description=PanelPro server control panel
-Documentation=https://github.com/your-name/PanelPro
 After=network-online.target
 Wants=network-online.target
 
@@ -110,8 +126,8 @@ Wants=network-online.target
 Type=simple
 WorkingDirectory=$INSTALL_DIR
 Environment=PANELPRO_HOME=$INSTALL_DIR
-ExecStart=$INSTALL_DIR/venv/bin/panelpro start --port $PANEL_PORT
-Restart=always
+ExecStart=$INSTALL_DIR/venv/bin/panelpro start --host $PANEL_HOST
+Restart=on-failure
 RestartSec=5
 LimitNOFILE=65535
 
@@ -120,48 +136,36 @@ WantedBy=multi-user.target
 UNIT
 
 systemctl daemon-reload
-systemctl enable --now panelpro
+systemctl enable panelpro
+systemctl restart panelpro
 
-# ---------------------------------------------------------------------------
-# 6. Firewall + cron
-# ---------------------------------------------------------------------------
-if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q "Status: active"; then
-  ufw allow "$PANEL_PORT"/tcp >/dev/null 2>&1 || true
-  echo ">> ufw: port $PANEL_PORT/tcp opened"
-elif command -v firewall-cmd >/dev/null 2>&1; then
-  firewall-cmd --permanent --add-port="$PANEL_PORT"/tcp >/dev/null 2>&1 || true
-  firewall-cmd --reload >/dev/null 2>&1 || true
-  echo ">> firewalld: port $PANEL_PORT/tcp opened"
+ENTRY="$(venv/bin/python -c 'from panelpro.core.settings_store import get_setting; print(get_setting("entry_path"))')"
+SCHEME="$(venv/bin/python -c 'from panelpro.core.settings_store import get_setting; print("https" if get_setting("panel_ssl") else "http")')"
+CHECK_HOST="$PANEL_HOST"
+case "$CHECK_HOST" in
+  0.0.0.0) CHECK_HOST=127.0.0.1 ;;
+  ::) CHECK_HOST='[::1]' ;;
+  *:*) CHECK_HOST="[$CHECK_HOST]" ;;
+esac
+URL="$SCHEME://$CHECK_HOST:$PANEL_PORT"
+READY=false
+for (( attempt=0; attempt<30; attempt++ )); do
+  if curl --insecure --noproxy '*' --fail --silent --max-time 2 "$URL/api/health" >/dev/null; then
+    READY=true
+    break
+  fi
+  sleep 1
+done
+if [[ $READY != true ]]; then
+  echo "PanelPro failed its local health check. Run: journalctl -u panelpro -n 60" >&2
+  exit 1
 fi
 
-if command -v systemctl >/dev/null 2>&1; then
-  systemctl enable crond 2>/dev/null || systemctl enable cron 2>/dev/null || true
+echo "PanelPro is running at $URL/$ENTRY"
+if [[ $PANEL_HOST == 127.0.0.1 ]]; then
+  echo "From your workstation, connect with: ssh -N -L $PANEL_PORT:127.0.0.1:$PANEL_PORT user@server"
 fi
-
-# ---------------------------------------------------------------------------
-# 7. Summary
-# ---------------------------------------------------------------------------
-sleep 2
-ENTRY=$("$INSTALL_DIR/venv/bin/python" - <<PYEOF
-import os
-os.environ.setdefault('PANELPRO_HOME', '$INSTALL_DIR')
-from panelpro.core import settings_store
-settings_store.init_defaults()
-print(settings_store.get_setting('entry_path'))
-PYEOF
-)
-
-echo ""
-echo "=============================================================="
-echo " PanelPro installed successfully!"
-echo ""
-echo "   Panel URL : http://<server-ip>:$PANEL_PORT/$ENTRY"
-echo "   Service   : systemctl status panelpro"
-echo "   Logs      : journalctl -u panelpro -f"
-echo ""
-echo "   First admin credentials are in:"
-echo "     $INSTALL_DIR/data/admin_credentials.txt"
-echo "   (open it, save the password, then delete the file)"
-echo ""
-echo "   CLI: $INSTALL_DIR/venv/bin/panelpro doctor|set-port|reset-password"
-echo "=============================================================="
+if [[ -f "$INSTALL_DIR/data/admin_credentials.txt" ]]; then
+  echo "Initial credentials: $INSTALL_DIR/data/admin_credentials.txt"
+fi
+echo "CLI: $INSTALL_DIR/venv/bin/panelpro"

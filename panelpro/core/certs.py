@@ -64,8 +64,8 @@ def parse_cert_pem(pem_text: str) -> dict:
     except x509.ExtensionNotFound:
         dns_names = []
 
-    not_after = cert.not_valid_after.replace(tzinfo=None)
-    not_before = cert.not_valid_before.replace(tzinfo=None)
+    not_after = cert.not_valid_after_utc.replace(tzinfo=None)
+    not_before = cert.not_valid_before_utc.replace(tzinfo=None)
     days_left = (not_after - datetime.datetime.utcnow()).days
     return {
         "subject": _cn(cert.subject),

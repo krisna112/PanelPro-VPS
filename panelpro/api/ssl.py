@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from panelpro.api.deps import api_ok, require_auth, require_role
+from panelpro.api.sites import _attach_certificate, _get_site
 from panelpro.core import certs as cert_util
 from panelpro.core import keyvault
 from panelpro.core.database import get_db
@@ -128,46 +129,47 @@ def letsencrypt(body: LetsEncryptBody, db: Session = Depends(get_db), ctx=Depend
     import json as _json
 
     domain = sslmgr.validate_cert_domain(body.domain)
+    aliases = [sslmgr.validate_cert_domain(alias) for alias in body.aliases if alias.strip()]
+    site = _get_site(db, body.site_id) if body.site_id is not None else None
     if body.dns_account_id:
         account = db.query(DnsAccount).filter(DnsAccount.id == body.dns_account_id).first()
         if not account:
             raise PanelError("DNS account not found.", 404)
         config = _json.loads(keyvault.decrypt_str(account.config_enc))
         result = sslmgr.issue_letsencrypt_dns(
-            domain, body.aliases, account.provider, config, body.email
+            domain, aliases, account.provider, config, body.email
         )
         source = "letsencrypt-dns"
     else:
-        if not body.webroot:
+        webroot = site.root if site else body.webroot
+        if not webroot:
             raise PanelError("webroot is required for the HTTP-01 challenge.", 400)
-        result = sslmgr.issue_letsencrypt(domain, body.aliases, body.webroot, body.email)
+        if site and (not site.enabled or any(d not in [site.name, *(site.aliases or [])]
+                                             for d in [domain, *aliases])):
+            raise PanelError("HTTP-01 requires an enabled website that serves all requested domains.", 400)
+        result = sslmgr.issue_letsencrypt(domain, aliases, webroot, body.email)
         source = "letsencrypt"
     info = result["info"]
-    row = SslCert(
-        name=f"LE-{domain}",
-        domain=domain,
-        issuer=info["issuer"] or "Let's Encrypt",
-        not_before=datetime.fromisoformat(info["not_before"]),
-        not_after=datetime.fromisoformat(info["not_after"]),
-        cert_path=result["cert_path"],
-        key_path=result["key_path"],
-        source=source,
-        auto_renew=body.auto_renew,
-    )
-    db.add(row)
-    db.commit()
-    deployed = None
-    if body.site_id:
-        site = db.query(Site).filter(Site.id == body.site_id).first()
-        if site:
-            site.ssl_cert_id = row.id
-            db.commit()
-            from panelpro.api.sites import _render_site
-
-            _render_site(site, db)
-            webservers.detect_webserver(site.server).reload()
-            deployed = site.name
-    return api_ok({"cert": _cert_payload(row), "deployed": deployed})
+    with webservers.CONFIG_LOCK:
+        row = db.query(SslCert).filter_by(cert_path=result["cert_path"]).first()
+        if row is None:
+            row = SslCert(name=f"LE-{domain}", domain=domain, cert_path=result["cert_path"])
+            db.add(row)
+        row.issuer = info["issuer"] or "Let's Encrypt"
+        row.not_before = datetime.fromisoformat(info["not_before"])
+        row.not_after = datetime.fromisoformat(info["not_after"])
+        row.key_path = result["key_path"]
+        row.source = source
+        row.auto_renew = body.auto_renew
+        db.commit()
+        deployed = None
+        warning = None
+        if body.site_id is not None:
+            try:
+                deployed = _attach_certificate(db, body.site_id, row).name
+            except PanelError as exc:
+                warning = f"Certificate saved. Website deployment failed: {exc.message}"
+        return api_ok({"cert": _cert_payload(row), "deployed": deployed, "warning": warning})
 
 
 @router.post("/selfsigned")
@@ -209,31 +211,23 @@ def custom(body: CustomCertBody, db: Session = Depends(get_db), ctx=Depends(requ
 
 
 @router.post("/{cert_id}/deploy")
+@webservers.serialized
 def deploy(cert_id: int, body: DeployBody, db: Session = Depends(get_db), ctx=Depends(require_role("operator"))):
     cert = db.query(SslCert).filter(SslCert.id == cert_id).first()
     if not cert:
         raise PanelError("Certificate not found.", 404)
-    site = db.query(Site).filter(Site.id == body.site_id).first()
-    if not site:
-        raise PanelError("Site not found.", 404)
-    site.ssl_cert_id = cert.id
-    db.commit()
-    from panelpro.api.sites import _render_site
-
-    _render_site(site, db)
-    webservers.detect_webserver(site.server).reload()
+    site = _attach_certificate(db, body.site_id, cert)
     return api_ok({"deployed_to": site.name})
 
 
 @router.post("/{cert_id}/delete")
+@webservers.serialized
 def delete_cert(cert_id: int, db: Session = Depends(get_db), ctx=Depends(require_role("operator"))):
     row = db.query(SslCert).filter(SslCert.id == cert_id).first()
     if not row:
         raise PanelError("Certificate not found.", 404)
-    # detach from any site using it
-    for site in db.query(Site).filter(Site.ssl_cert_id == cert_id).all():
-        site.ssl_cert_id = None
-        db.commit()
+    if db.query(Site).filter_by(ssl_cert_id=cert_id).first():
+        raise PanelError("Remove or replace this certificate on its websites before deleting it.", 409)
     db.delete(row)
     db.commit()
     return api_ok({"deleted": row.name})
@@ -241,7 +235,10 @@ def delete_cert(cert_id: int, db: Session = Depends(get_db), ctx=Depends(require
 
 @router.post("/renew")
 def renew(ctx=Depends(require_role("operator"))):
-    return api_ok(sslmgr.renew_all())
+    result = sslmgr.renew_all()
+    if not result["ok"]:
+        raise PanelError(f"Certificate renewal failed: {result['output']}", 502)
+    return api_ok(result)
 
 
 @router.post("/{cert_id}/verify")

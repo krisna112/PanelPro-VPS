@@ -277,19 +277,30 @@ def extract(archive: str, dest: str) -> dict:
     dest_root = dest_p.resolve()
 
     def _safe_tar_members(tf: tarfile.TarFile) -> list[tarfile.TarInfo]:
+        root_prefix = str(dest_root) + os.sep
         safe: list[tarfile.TarInfo] = []
         for m in tf.getmembers():
+            # symlink/hardlink targets can escape the destination tree
+            if m.issym() or m.islnk():
+                link = Path(m.linkname)
+                link_target = link.resolve() if link.is_absolute() else (dest_root / link).resolve()
+                if not str(link_target).startswith(root_prefix):
+                    raise PanelError(
+                        f"Refusing archive link escaping destination: {m.name} -> {m.linkname}",
+                        400,
+                    )
             candidate = (dest_root / m.name).resolve()
-            if not str(candidate).startswith(str(dest_root)):
+            if not str(candidate).startswith(root_prefix) and candidate != dest_root:
                 raise PanelError(f"Refusing unsafe archive member: {m.name}", 400)
             safe.append(m)
         return safe
 
     if zipfile.is_zipfile(arc_p):
         with zipfile.ZipFile(arc_p) as zf:
+            zip_prefix = str(dest_root) + os.sep
             for info in zf.infolist():
                 candidate = (dest_root / info.filename).resolve()
-                if not str(candidate).startswith(str(dest_root)):
+                if not str(candidate).startswith(zip_prefix) and candidate != dest_root:
                     raise PanelError(
                         f"Refusing unsafe archive member: {info.filename}", 400
                     )

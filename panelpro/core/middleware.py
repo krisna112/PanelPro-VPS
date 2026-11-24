@@ -81,6 +81,7 @@ class EntryGateMiddleware:
             return await self.app(scope, receive, send)
 
         cookie_value = ""
+        has_api_key_header = False
         for raw_key, raw_val in scope.get("headers", []):
             if raw_key.lower() == b"cookie":
                 for part in raw_val.decode("latin-1").split(";"):
@@ -88,7 +89,15 @@ class EntryGateMiddleware:
                     if k == ENTRY_COOKIE:
                         cookie_value = v
                         break
+            elif raw_key.lower() == b"authorization":
+                # Headless API clients (and fleet nodes) authenticate with a
+                # Bearer key; the gate only checks the prefix — the real key
+                # check happens in deps.authenticate.
+                if raw_val.decode("latin-1").strip().startswith("Bearer ppk_"):
+                    has_api_key_header = True
         if cookie_value and keyvault.verify_signature("entry-ok", cookie_value):
+            return await self.app(scope, receive, send)
+        if has_api_key_header and path.startswith("/api/"):
             return await self.app(scope, receive, send)
 
         entry = str(settings_store.get_setting("entry_path") or "")
@@ -96,7 +105,7 @@ class EntryGateMiddleware:
             path == f"/{entry}" or path.startswith(f"/{entry}/")
         )
         if is_entry_path and scope.get("method") == "GET":
-            secure = "; Secure" if settings_store.get_setting("panel_ssl") else ""
+            secure = "; Secure" if scope.get("scheme") == "https" else ""
             cookie_header = (
                 f"{ENTRY_COOKIE}={keyvault.sign('entry-ok')}; Path=/; HttpOnly; "
                 f"SameSite=Strict; Max-Age={ENTRY_COOKIE_MAX_AGE}{secure}"

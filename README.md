@@ -36,30 +36,46 @@ from one clean web interface.
 | 🔔 **Notifications** | Webhook, Telegram, SMTP; events: login fail, disk/CPU thresholds, SSL expiry, backups |
 | 👥 **Users** | Multi-user with roles (admin/operator/viewer) + scoped API keys |
 | 🧩 **Plugins** | Drop-in FastAPI router plugins with a sample plugin and docs |
+| 🩺 **Daemon Guard** | Process/port/pidfile/service watchdog with auto-restart + Telegram/webhook alerts |
+| 📊 **Traffic Stats** | Per-site access-log analytics: PV/UV, bandwidth, spiders, top IPs/URLs, daily charts |
+| 🧱 **WAF** | Per-site nginx rules: CC rate limiting, IP and user-agent blocklists, generated conf with `nginx -t` rollback |
+| 🔐 **Tamper Protection** | SHA-256 file-integrity baselines per site, scheduled scans, optional auto-restore from snapshot |
+| ⚖️ **Load Balancer** | nginx upstream pools (`upstream:<name>` proxy targets) with weight tuning |
+| 🚚 **Migration** | One-bundle export (sites + DB dumps + certs) and import on a new server |
+| 🗃️ **Replication** | MySQL master→slave setup wizard with live lag/status monitoring |
+| 🖥️ **Multi-Server** | Fleet: monitor multiple PanelPro nodes from one master via API keys |
+| 🌐 **Wildcard SSL** | Let's Encrypt DNS-01 (Cloudflare, DigitalOcean, DNSPod, Aliyun, GoDaddy) for `*.domain` certificates |
 
 **Panel security design**: bcrypt passwords, HttpOnly + SameSite=Strict
-sessions, CSRF header protection, per-IP rate limiting, secret entry URL,
-audit log of every mutating request, encrypted secrets at rest, security
-headers. See [docs/SECURITY.md](docs/SECURITY.md).
+sessions, CSRF header protection, per-IP rate limiting + brute-force
+lockout, secret entry URL, audit log of every mutating request, encrypted
+secrets at rest (DNS API credentials, fleet API keys, DB passwords),
+security headers. Headless API clients authenticate with `Authorization:
+Bearer ppk_…` and work without the entry cookie. See
+[docs/SECURITY.md](docs/SECURITY.md).
 
 ## 🚀 Quick Start (Linux server)
 
 ```bash
-git clone https://github.com/your-name/PanelPro.git
-cd PanelPro
-sudo bash scripts/install.sh --port 21000
+sudo bash scripts/install.sh --stack nginx --port 21000
 ```
 
-The installer prints your panel URL with the **secret entry path** and
-creates the first admin account (credentials file:
-`/usr/local/panelpro/data/admin_credentials.txt` — save it, then delete it).
+Run from the project checkout on an Ubuntu or Debian VPS. Use `--stack php`
+for PHP-FPM and MariaDB. The panel listens on loopback by default. Connect with
+`ssh -N -L 21000:127.0.0.1:21000 user@server`, then open the URL printed by
+the installer. Initial credentials are stored in
+`/usr/local/panelpro/data/admin_credentials.txt`.
+
+From **Websites → Add Website**, choose **Static website**, **PHP-FPM**, or
+**Reverse proxy**. Once DNS points at the VPS, open **SSL / HTTPS** on the site
+to issue a Let's Encrypt certificate.
 
 Dev mode (any OS, for API/frontend work):
 
 ```bash
 python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-PANELPRO_HOME=./runtime python -m panelpro start --dev
+PANELPRO_HOME=./runtime PANELPRO_WWW_ROOT=./runtime/www python -m panelpro start --dev
 ```
 
 ## 🧭 Documentation
@@ -75,7 +91,7 @@ PANELPRO_HOME=./runtime python -m panelpro start --dev
 ## 🧪 Development
 
 ```bash
-pip install -r requirements.txt -r ".[dev]"
+pip install -e ".[dev]"
 pytest                  # unit tests (OS-specific tests skip automatically)
 ruff check panelpro     # lint
 scripts/vendor_assets.sh  # optional: vendor Vue/xterm for offline UI

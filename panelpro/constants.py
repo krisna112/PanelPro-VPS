@@ -63,4 +63,9 @@ NOTIFY_EVENTS = [
     "site_created",
     "site_deleted",
     "app_installed",
+    "daemon_down",
+    "daemon_restarted",
+    "tamper_detected",
+    "migration_done",
+    "migration_failed",
 ]

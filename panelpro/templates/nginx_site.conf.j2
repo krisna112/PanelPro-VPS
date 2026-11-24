@@ -1,39 +1,44 @@
-# Managed by PanelPro for {{ domain }} — edit via the panel (manual edits
-# are kept, but panel actions re-render this file).
-{% if force_https and ssl_cert %}
+# Managed by PanelPro for {{ domain }}. Website settings regenerate this file.
+{% set has_tls = ssl_cert and ssl_key %}
+{% for tls in ([false, true] if has_tls else [false]) %}
 server {
-    listen 80;
-    listen [::]:80;
-    server_name {{ domain }}{% for a in aliases %} {{ a }}{% endfor %};
-    return 301 https://$host$request_uri;
-}
-
-server {
+{% if tls %}
     listen 443 ssl;
     listen [::]:443 ssl;
-    http2 on;
-    server_name {{ domain }}{% for a in aliases %} {{ a }}{% endfor %};
-
-    ssl_certificate     {{ ssl_cert }};
-    ssl_certificate_key {{ ssl_key }};
+    ssl_certificate     {{ ssl_cert | config_path }};
+    ssl_certificate_key {{ ssl_key | config_path }};
     ssl_protocols       TLSv1.2 TLSv1.3;
-    ssl_ciphers         HIGH:!aNULL:!MD5;
 {% else %}
-server {
     listen 80;
     listen [::]:80;
-    server_name {{ domain }}{% for a in aliases %} {{ a }}{% endfor %};
 {% endif %}
+    server_name {{ domain }}{% for a in aliases %} {{ a }}{% endfor %};
 
-    root  {{ root }};
-    index index.php index.html index.htm;
-
-    access_log {{ access_log }};
-    error_log  {{ error_log }};
+    root  {{ root | config_path }};
+    index {% if php_version and not proxy_target %}index.php {% endif %}index.html index.htm;
+    access_log {{ access_log | config_path }};
+    error_log  {{ error_log | config_path }};
 
     add_header X-Content-Type-Options nosniff always;
     client_max_body_size 100m;
 
+    location ~ ^/\.well-known/acme-challenge/[A-Za-z0-9_-]+$ {
+        default_type text/plain;
+        try_files $uri =404;
+    }
+
+    location ~ /\. {
+        deny all;
+    }
+
+{% if has_tls and force_https and not tls %}
+    location / {
+        return 301 https://$host$request_uri;
+    }
+{% else %}
+{% if waf_include %}
+    include {{ waf_include | config_path }};
+{% endif %}
 {% if proxy_target %}
     location / {
         proxy_pass         {{ proxy_target }};
@@ -45,6 +50,12 @@ server {
         proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
         proxy_set_header   X-Forwarded-Proto $scheme;
         proxy_read_timeout 300s;
+{% if proxy_ca_bundle %}
+        proxy_ssl_server_name on;
+        proxy_ssl_verify on;
+        proxy_ssl_verify_depth 3;
+        proxy_ssl_trusted_certificate {{ proxy_ca_bundle | config_path }};
+{% endif %}
     }
 {% elif php_version %}
     location / {
@@ -54,20 +65,19 @@ server {
         try_files $uri =404;
         fastcgi_pass  unix:{{ php_socket }};
         fastcgi_index index.php;
-        include       fastcgi.conf;
+        include       fastcgi_params;
         fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
-    }
-    location ~* ^/(.+\.(?:css|js|png|jpg|jpeg|gif|ico|svg|webp|woff2?))$ {
-        expires 30d;
-        access_log off;
     }
 {% else %}
     location / {
         try_files $uri $uri/ =404;
     }
 {% endif %}
-
-    location ~ /\.(?!well-known) {
-        deny all;
+{% if not proxy_target %}
+    location ~* \.ph(?:p[0-9]*|tml|ar)(?:$|[./]) {
+        return 404;
     }
+{% endif %}
+{% endif %}
 }
+{% endfor %}

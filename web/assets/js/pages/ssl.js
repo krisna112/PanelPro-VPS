@@ -3,7 +3,7 @@ PP.pages = PP.pages || {};
 PP.pages.ssl = {
   data: () => ({
     certs: [], certbot: false, sites: [],
-    le: { open: false, form: { domain: '', aliases: '', webroot: '', email: '', site_id: null, auto_renew: true, challenge: 'webroot', dns_account_id: null } },
+    le: { open: false, issuing: false, error: '', form: { domain: '', aliases: '', webroot: '', email: '', site_id: null, auto_renew: true, challenge: 'webroot', dns_account_id: null } },
     ss: { open: false, form: { domain: '', days: 3650 } },
     custom: { open: false, form: { name: '', cert: '', key: '' } },
     dns: { open: false, accounts: [], providers: [], form: { name: '', provider: 'cloudflare', config: {} } },
@@ -56,21 +56,29 @@ PP.pages.ssl = {
     },
     async issueLE() {
       const f = this.le.form;
-      if (!f.domain) return;
-      if (f.challenge === 'webroot' && !f.webroot) return;
-      if (f.challenge === 'dns' && !f.dns_account_id) return;
+      if (this.le.issuing) return;
+      this.le.issuing = true;
+      this.le.error = '';
       try {
         const body = {
           ...f,
           aliases: f.aliases.split(',').map(s => s.trim()).filter(Boolean),
         };
         if (f.challenge === 'dns') body.webroot = '';
+        else body.dns_account_id = null;
         const res = await PP.api('ssl/letsencrypt', { method: 'POST', body });
         this.le.open = false;
         this.le.form = { domain: '', aliases: '', webroot: '', email: '', site_id: null, auto_renew: true, challenge: 'webroot', dns_account_id: null };
-        PP.ui.success(PP.t('ssl.letsencrypt'), res.cert.domain);
+        if (res.warning) PP.ui.warn(PP.t('ssl.letsencrypt'), res.warning);
+        else PP.ui.success(PP.t('ssl.letsencrypt'), res.cert.domain);
         this.load();
-      } catch (e) { PP.ui.error(PP.t('common.error'), e.message); }
+      } catch (e) { this.le.error = e.message; }
+      finally { this.le.issuing = false; }
+    },
+    selectSite(siteId) {
+      const site = this.sites.find(row => row.id === Number(siteId));
+      if (!site) return;
+      Object.assign(this.le.form, { site_id: site.id, domain: site.name, aliases: (site.aliases || []).join(', '), webroot: site.root });
     },
     async issueSS() {
       const f = this.ss.form;
@@ -112,7 +120,13 @@ PP.pages.ssl = {
       } catch (e) { PP.ui.error(PP.t('common.error'), e.message); }
     },
   },
-  mounted() { this.load(); },
+  async mounted() {
+    await this.load();
+    if (this.$route.query.site && this.certbot) {
+      this.selectSite(this.$route.query.site);
+      this.le.open = Boolean(this.le.form.site_id);
+    }
+  },
   template: `
   <div>
     <div class="page-head">
@@ -123,7 +137,7 @@ PP.pages.ssl = {
       <button class="btn" @click="openDnsAccounts">🔑 {{ PP.t('ssl.dnsAccounts') }}</button>
       <button class="btn" @click="ss.open = true">+ {{ PP.t('ssl.selfsigned') }}</button>
       <button class="btn" @click="custom.open = true">+ {{ PP.t('ssl.custom') }}</button>
-      <button class="btn primary" @click="le.open = true">+ {{ PP.t('ssl.letsencrypt') }}</button>
+      <button class="btn primary" :disabled="!certbot" @click="le.error = ''; le.open = true">+ {{ PP.t('ssl.letsencrypt') }}</button>
     </div>
 
     <p-table :cols="[{ key: 'name', label: PP.t('common.name') },
@@ -151,18 +165,18 @@ PP.pages.ssl = {
       </template>
     </p-table>
 
-    <p-modal :open="le.open" :title="PP.t('ssl.letsencrypt')" @close="le.open = false">
+    <p-modal :open="le.open" :title="PP.t('ssl.letsencrypt')" @close="!le.issuing && (le.open = false)">
       <div class="field"><label>{{ PP.t('sites.domain') }} (wildcard: *.contoh.com)</label>
         <input class="input mono" v-model="le.form.domain"></div>
       <div class="field"><label>{{ PP.t('sites.aliases') }} ({{ PP.t('common.optional') }})</label>
         <input class="input mono" v-model="le.form.aliases"></div>
       <div class="field"><label>{{ PP.t('ssl.challenge') }}</label>
-        <select class="select" v-model="le.form.challenge" @change="le.form.dns_account_id = null">
+        <select class="select" v-model="le.form.challenge" @change="le.form.dns_account_id = null; le.form.challenge === 'dns' && loadDns()">
           <option value="webroot">HTTP-01 (webroot)</option>
           <option value="dns">DNS-01 · {{ PP.t('ssl.dnsChallenge') }}</option>
         </select></div>
       <div class="field" v-if="le.form.challenge === 'webroot'"><label>Webroot</label>
-        <input class="input mono" v-model="le.form.webroot" placeholder="/www/wwwroot/example.com"></div>
+        <input class="input mono" v-model="le.form.webroot" :readonly="!!le.form.site_id" placeholder="/www/wwwroot/example.com"></div>
       <div class="field" v-if="le.form.challenge === 'dns'"><label>{{ PP.t('ssl.dnsAccounts') }}</label>
         <select class="select" v-model="le.form.dns_account_id">
           <option :value="null">—</option>
@@ -174,15 +188,16 @@ PP.pages.ssl = {
       <div class="field"><label>Email ({{ PP.t('common.optional') }})</label>
         <input class="input mono" v-model="le.form.email"></div>
       <div class="field"><label>Deploy ke situs ({{ PP.t('common.optional') }})</label>
-        <select class="select" v-model="le.form.site_id">
+        <select class="select" v-model="le.form.site_id" @change="selectSite(le.form.site_id)">
           <option :value="null">—</option>
           <option v-for="s in sites" :key="s.id" :value="s.id">{{ s.name }}</option>
         </select></div>
       <div class="checkbox-row mb"><p-switch v-model="le.form.auto_renew"></p-switch>
         <span>auto-renew</span></div>
+      <p v-if="le.error" class="site-error" role="alert">{{ le.error }}</p>
       <template #foot>
-        <button class="btn" @click="le.open = false">{{ PP.t('common.cancel') }}</button>
-        <button class="btn primary" @click="issueLE">{{ PP.t('common.save') }}</button>
+        <button class="btn" :disabled="le.issuing" @click="le.open = false">{{ PP.t('common.cancel') }}</button>
+        <button class="btn primary" :disabled="le.issuing || !le.form.domain || (le.form.challenge === 'dns' ? !le.form.dns_account_id : !le.form.webroot)" @click="issueLE">{{ PP.t(le.issuing ? 'common.loading' : 'common.save') }}</button>
       </template>
     </p-modal>
 

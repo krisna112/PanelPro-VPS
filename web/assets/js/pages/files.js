@@ -186,6 +186,7 @@ PP.pages.files = {
       this.homePath = home.path;
       this.path = home.exists ? home.path : '/';
     } catch (e) { /* keep '/' */ }
+    if (typeof this.$route.query.path === 'string') this.path = this.$route.query.path;
     this.load();
   },
   template: `

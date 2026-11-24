@@ -2,7 +2,7 @@
 
 Run with the ``panelpro`` CLI (panelpro.cli) or directly:
 
-    uvicorn panelpro.main:app --host 0.0.0.0 --port 21000
+    uvicorn panelpro.main:app --host 127.0.0.1 --port 21000
 """
 
 from __future__ import annotations
@@ -11,6 +11,7 @@ import logging
 import os
 import secrets
 from contextlib import asynccontextmanager
+from datetime import datetime
 
 from fastapi import FastAPI
 from fastapi.responses import FileResponse, JSONResponse
@@ -44,23 +45,21 @@ def _seed_admin(db) -> None:
     username = os.environ.get("PANELPRO_ADMIN_USER", "admin")
     password = random_password(14)
     db.add(User(username=username, password_hash=hash_password(password), role="admin"))
-    db.commit()
-    try:
-        CFG.credentials_path.write_text(
+    fd = os.open(CFG.credentials_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as file:
+        file.write(
             f"PanelPro admin credentials\n"
-            f"URL:      http://<server>:{settings_store.get_setting('panel_port')}/"
+            f"URL:      {'https' if settings_store.get_setting('panel_ssl') else 'http'}://localhost:"
+            f"{settings_store.get_setting('panel_port')}/"
             f"{settings_store.get_setting('entry_path')}\n"
             f"Username: {username}\n"
             f"Password: {password}\n"
-            f"Created:  {__import__('datetime').datetime.utcnow().isoformat()}Z\n"
+            f"Created:  {datetime.utcnow().isoformat()}Z\n"
             f"(Delete this file after saving the password.)\n",
-            encoding="utf-8",
         )
-        CFG.credentials_path.chmod(0o600)
-    except OSError:
-        pass
-    print(f"[PanelPro] Admin account created -> {username} / {password}")
-    print(f"[PanelPro] Credentials file: {CFG.credentials_path}")
+    CFG.credentials_path.chmod(0o600)
+    db.commit()
+    log.info("Initial administrator created. Credentials file: %s", CFG.credentials_path)
 
 
 def _register_background_jobs() -> None:
@@ -70,12 +69,15 @@ def _register_background_jobs() -> None:
     from panelpro.core import monitor as monitor_mod
     from panelpro.core import notify as notify_mod
     from panelpro.core import security
-    from panelpro.services import backupsvc, sslmgr
+    from panelpro.services import backupsvc, procd, sslmgr, tamper, traffic
 
     SCHEDULER.register("monitor-flush", monitor_mod.MONITOR.flush, MONITOR_FLUSH_INTERVAL)
     SCHEDULER.register("notify-thresholds", notify_mod.check_thresholds, 300)
     SCHEDULER.register("ssl-expiry-check", sslmgr.check_ssl_expiry_job, 6 * 3600)
     SCHEDULER.register("backup-due-check", backupsvc.backup_due_check_job, 60)
+    SCHEDULER.register("daemon-check", procd.daemon_check_job, 30)
+    SCHEDULER.register("traffic-collect", traffic.traffic_collect_job, 300)
+    SCHEDULER.register("tamper-scan", tamper.tamper_scan_job, 300)
 
     def purge_sessions() -> None:
         db = SessionLocal()
@@ -159,6 +161,9 @@ def create_app() -> FastAPI:
         cron as api_cron,
     )
     from panelpro.api import (
+        daemon as api_daemon,
+    )
+    from panelpro.api import (
         dashboard as api_dashboard,
     )
     from panelpro.api import (
@@ -171,10 +176,19 @@ def create_app() -> FastAPI:
         files as api_files,
     )
     from panelpro.api import (
+        fleet as api_fleet,
+    )
+    from panelpro.api import (
         ftp as api_ftp,
     )
     from panelpro.api import (
+        lb as api_lb,
+    )
+    from panelpro.api import (
         logs as api_logs,
+    )
+    from panelpro.api import (
+        migration as api_migration,
     )
     from panelpro.api import (
         monitor_api,
@@ -187,6 +201,9 @@ def create_app() -> FastAPI:
     )
     from panelpro.api import (
         plugins as api_plugins,
+    )
+    from panelpro.api import (
+        repl as api_repl,
     )
     from panelpro.api import (
         security as api_security,
@@ -204,10 +221,19 @@ def create_app() -> FastAPI:
         system as api_system,
     )
     from panelpro.api import (
+        tamper as api_tamper,
+    )
+    from panelpro.api import (
         terminal as api_terminal,
     )
     from panelpro.api import (
+        traffic as api_traffic,
+    )
+    from panelpro.api import (
         users as api_users,
+    )
+    from panelpro.api import (
+        waf as api_waf,
     )
 
     app.include_router(api_auth.router)
@@ -231,6 +257,15 @@ def create_app() -> FastAPI:
     app.include_router(api_users.router)
     app.include_router(api_notifications.router)
     app.include_router(api_plugins.router)
+    # Pro modules
+    app.include_router(api_daemon.router)
+    app.include_router(api_traffic.router)
+    app.include_router(api_waf.router)
+    app.include_router(api_lb.router)
+    app.include_router(api_tamper.router)
+    app.include_router(api_migration.router)
+    app.include_router(api_repl.router)
+    app.include_router(api_fleet.router)
 
     # ------------------------------------------------------------------ #
     # Dynamic plugins (panelpro/plugins/*/main.py exposing `router`)

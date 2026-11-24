@@ -28,6 +28,12 @@ jobs:
         run: ruff check panelpro
       - name: Compile check
         run: python -m compileall panelpro
+      - name: Install Nginx for deployment smoke tests
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y nginx
+          for script in scripts/*.sh; do bash -n "$script"; done
       - name: Run tests
         env:
           PANELPRO_HOME: ${{ runner.temp }}/panelpro-home
