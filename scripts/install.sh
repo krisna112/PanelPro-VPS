@@ -5,12 +5,14 @@ set -euo pipefail
 PANEL_PORT="${PANEL_PORT:-21000}"
 PANEL_HOST="${PANEL_HOST:-127.0.0.1}"
 INSTALL_DIR="${INSTALL_DIR:-/usr/local/panelpro}"
-STACK=none
+STACK=""
+PANEL_DOMAIN=""
+PANEL_EMAIL=""
 SOURCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --port|--host|--dir|--stack)
+    --port|--host|--dir|--stack|--domain|--email)
       if [[ $# -lt 2 ]]; then
         echo "Missing value for $1" >&2
         exit 1
@@ -20,11 +22,14 @@ while [[ $# -gt 0 ]]; do
         --host) PANEL_HOST="$2" ;;
         --dir) INSTALL_DIR="$2" ;;
         --stack) STACK="$2" ;;
+        --domain) PANEL_DOMAIN="$2" ;;
+        --email) PANEL_EMAIL="$2" ;;
       esac
       shift 2
       ;;
     --help)
       echo "Usage: sudo bash scripts/install.sh [--port 21000] [--host 127.0.0.1] [--dir /usr/local/panelpro] [--stack none|nginx|php]"
+      echo "For HTTPS access, add: --domain panel.example.com --email admin@example.com"
       exit 0
       ;;
     *) echo "Unknown option: $1" >&2; exit 1 ;;
@@ -48,6 +53,14 @@ if [[ $INSTALL_DIR == / || ! -f "$SOURCE_DIR/panelpro/__main__.py" || ! -f "$SOU
   echo "Choose an application directory and run from the complete PanelPro checkout." >&2
   exit 1
 fi
+if [[ -n $PANEL_DOMAIN ]]; then
+  if [[ -z $PANEL_EMAIL || $PANEL_HOST != 127.0.0.1 ]]; then
+    echo "--domain requires --email and a panel listener on 127.0.0.1." >&2
+    exit 1
+  fi
+  STACK="${STACK:-nginx}"
+fi
+STACK="${STACK:-none}"
 if [[ $STACK != none && $STACK != nginx && $STACK != php ]]; then
   echo "Unknown stack: $STACK" >&2
   exit 1
@@ -161,11 +174,23 @@ if [[ $READY != true ]]; then
   exit 1
 fi
 
-echo "PanelPro is running at $URL/$ENTRY"
-if [[ $PANEL_HOST == 127.0.0.1 ]]; then
-  echo "From your workstation, connect with: ssh -N -L $PANEL_PORT:127.0.0.1:$PANEL_PORT user@server"
+DOMAIN_FAILED=false
+if [[ -n $PANEL_DOMAIN ]]; then
+  if ! venv/bin/panelpro setup-domain "$PANEL_DOMAIN" --email "$PANEL_EMAIL"; then
+    DOMAIN_FAILED=true
+    echo "PanelPro started locally. Check DNS and ports 80/443, then retry with setup-domain." >&2
+  fi
+fi
+if [[ -z $PANEL_DOMAIN || $DOMAIN_FAILED == true ]]; then
+  echo "PanelPro is running at $URL/$ENTRY"
+  if [[ $PANEL_HOST == 127.0.0.1 ]]; then
+    echo "From your workstation, connect with: ssh -N -L $PANEL_PORT:127.0.0.1:$PANEL_PORT user@server"
+  fi
 fi
 if [[ -f "$INSTALL_DIR/data/admin_credentials.txt" ]]; then
   echo "Initial credentials: $INSTALL_DIR/data/admin_credentials.txt"
 fi
 echo "CLI: $INSTALL_DIR/venv/bin/panelpro"
+if [[ $DOMAIN_FAILED == true ]]; then
+  exit 1
+fi

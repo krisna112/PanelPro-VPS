@@ -22,6 +22,7 @@ from panelpro.core.syscmd import run
 from panelpro.models.tables import (
     DatabaseRow,
     DbUser,
+    Setting,
     Site,
     SslCert,
     TamperWatch,
@@ -83,6 +84,9 @@ def _get_site(db: Session, site_id: int) -> Site:
 
 def _check_domains(db: Session, domains: list[str], site_id: int | None = None) -> None:
     requested = set(domains)
+    panel_domain = db.get(Setting, "panel_domain")
+    if panel_domain and panel_domain.value in requested:
+        raise PanelError(f"Domain '{panel_domain.value}' is reserved for the PanelPro login.", 409)
     for site in db.query(Site).all():
         if site.id == site_id:
             continue

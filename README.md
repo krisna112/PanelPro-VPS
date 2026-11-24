@@ -57,13 +57,15 @@ Bearer ppk_…` and work without the entry cookie. See
 ## 🚀 Quick Start (Linux server)
 
 ```bash
-sudo bash scripts/install.sh --stack nginx --port 21000
+git clone https://github.com/krisna112/PanelPro-VPS.git
+cd PanelPro-VPS
+sudo bash scripts/install.sh --domain panel.example.com --email admin@example.com
 ```
 
-Run from the project checkout on an Ubuntu or Debian VPS. Use `--stack php`
-for PHP-FPM and MariaDB. The panel listens on loopback by default. Connect with
-`ssh -N -L 21000:127.0.0.1:21000 user@server`, then open the URL printed by
-the installer. Initial credentials are stored in
+On Ubuntu or Debian, point the panel hostname at the VPS and allow incoming
+traffic on ports 80 and 443 before installing. Open the HTTPS login URL printed
+by the installer. Use `--stack php` for PHP-FPM and MariaDB. Initial credentials
+are stored in
 `/usr/local/panelpro/data/admin_credentials.txt`.
 
 From **Websites → Add Website**, choose **Static website**, **PHP-FPM**, or

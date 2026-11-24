@@ -22,6 +22,7 @@ DEFAULTS: dict = {
     "api_enabled": True,
     "ip_allowlist": [],
     "trust_proxy": False,
+    "panel_domain": "",
     "panel_ssl": False,
     "panel_ssl_cert": "",
     "panel_ssl_key": "",

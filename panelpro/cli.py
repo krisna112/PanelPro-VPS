@@ -4,6 +4,7 @@
     panelpro reset-password [--username NAME]
     panelpro set-port PORT
     panelpro set-entry PATH
+    panelpro setup-domain DOMAIN --email EMAIL
     panelpro backup-panel
     panelpro doctor
     panelpro version
@@ -12,6 +13,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import shutil
 import sys
@@ -112,6 +114,34 @@ def cmd_set_entry(args) -> int:
         db.close()
 
 
+def cmd_setup_domain(args) -> int:
+    if sys.platform != "linux" or os.geteuid() != 0:
+        print("Run setup-domain as root on the Linux VPS.", file=sys.stderr)
+        return 1
+    if not CFG.db_path.is_file():
+        print("PanelPro must be installed and running on this VPS.", file=sys.stderr)
+        return 1
+
+    import fcntl
+
+    from panelpro.core.errors import PanelError
+    from panelpro.services.panel_access import setup_domain
+
+    try:
+        with (CFG.data_dir / "setup-domain.lock").open("a") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            url = setup_domain(args.domain, args.email)
+    except BlockingIOError:
+        print("Another panel domain setup is already running.", file=sys.stderr)
+        return 1
+    except (OSError, PanelError) as exc:
+        print(f"Panel domain setup failed: {exc}", file=sys.stderr)
+        return 1
+
+    print(f"PanelPro login: {url}")
+    return 0
+
+
 def cmd_backup_panel(args) -> int:
     """Back up the panel's own database + secrets into a tar.gz."""
     import tarfile
@@ -180,6 +210,11 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("set-entry", help="change the security entry path")
     p.add_argument("path")
     p.set_defaults(fn=cmd_set_entry)
+
+    p = sub.add_parser("setup-domain", help="publish the panel login on a domain with HTTPS")
+    p.add_argument("domain")
+    p.add_argument("--email", required=True, help="Let's Encrypt account email")
+    p.set_defaults(fn=cmd_setup_domain)
 
     p = sub.add_parser("backup-panel", help="back up panel database + secrets")
     p.set_defaults(fn=cmd_backup_panel)

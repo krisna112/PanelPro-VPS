@@ -125,7 +125,7 @@ def config_transaction(adapter: WebserverAdapter, paths: list[Path]):
 
         try:
             yield apply
-        except Exception:
+        except BaseException:
             try:
                 for path, (content, mode) in previous.items():
                     if isinstance(content, bytes):

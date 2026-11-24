@@ -9,34 +9,52 @@ The bundled PHP-FPM and MariaDB setup uses Debian-family packages and sockets.
 
 ## Install on a fresh VPS
 
-Copy or clone the complete PanelPro repository onto the VPS, then run this
-command from the checkout.
+For direct browser access, point a dedicated hostname such as
+`panel.example.com` at the VPS with an A record. Allow inbound TCP ports 80
+and 443 through the VPS and provider firewalls so Nginx can serve websites and
+Let's Encrypt can validate the hostname. Add an AAAA record only if IPv6
+reaches the same VPS.
 
 ```bash
-sudo bash scripts/install.sh --stack nginx --port 21000
+git clone https://github.com/krisna112/PanelPro-VPS.git
+cd PanelPro-VPS
+sudo bash scripts/install.sh --domain panel.example.com --email admin@example.com
 ```
 
-Use `--stack php` on Ubuntu or Debian for Nginx, Certbot, PHP-FPM, and MariaDB.
-Use `--stack none` to reuse a webserver you already manage. The installer checks
-the panel health endpoint and prints the private URL after startup. Website
-traffic uses ports 80 and 443. Configure those ports in the VPS firewall and
-cloud security group as needed.
+With `--domain`, the installer defaults to the Nginx stack. On Ubuntu and
+Debian, it installs Nginx and Certbot, starts PanelPro, and publishes the
+login through Nginx with a Let's Encrypt certificate. It prints the HTTPS
+login URL, including the private entry path, after checking the route. The
+panel backend uses port 21000 on loopback and website traffic uses ports 80
+and 443. Certbot reloads Nginx when it renews the panel certificate.
 
-The panel itself binds to `127.0.0.1` by default. From your workstation, open an
-SSH tunnel and then open the installation URL in your browser.
+Use `--stack php` on Ubuntu or Debian to include PHP-FPM and MariaDB. Use
+`--stack none` to reuse a compatible Nginx and Certbot installation. On
+RHEL-family hosts, install Certbot separately before setting up the domain.
 
-```bash
-ssh -N -L 21000:127.0.0.1:21000 user@server
-```
+If you omit `--domain`, the installer prints the local URL and the SSH tunnel
+command. If certificate or proxy setup fails, it prints those same details so
+you can still access the panel while you fix DNS or connectivity.
 
 Read the first admin password from
 `/usr/local/panelpro/data/admin_credentials.txt` on the server. Delete the file
 after saving the credentials. The path follows your `--dir` option.
 
-To serve the panel at a dedicated HTTPS hostname, keep it on loopback, put an
-HTTPS reverse proxy in front, and enable `trust_proxy` in panel settings.
-Configure the proxy to set the forwarded scheme and client address, then
-restart `panelpro`. The launcher trusts forwarded headers from loopback.
+## Add an HTTPS login domain to an existing installation
+
+From the current checkout on the VPS, update PanelPro and run `setup-domain`.
+Use a hostname dedicated to panel access. This keeps the existing account,
+entry path, and websites.
+
+```bash
+git pull --ff-only
+sudo bash scripts/update.sh
+sudo /usr/local/panelpro/venv/bin/panelpro setup-domain panel.example.com --email admin@example.com
+```
+
+The command uses the running panel's configured port and writes
+`panelpro-panel.conf` in the Nginx include directory. Run it again to repair
+or retry domain setup. A failed attempt restores the previous Nginx config.
 
 ## Publish a website
 
@@ -90,6 +108,7 @@ sudo bash scripts/uninstall.sh --purge   # also delete the install directory
 | `panelpro reset-password [--username admin]` | Generate a password and revoke existing sessions |
 | `panelpro set-port 21000` | Change the listener port, then restart the panel |
 | `panelpro set-entry my-secret-path` | Change the private entry path |
+| `panelpro setup-domain panel.example.com --email admin@example.com` | Publish the panel login over HTTPS through Nginx |
 | `panelpro backup-panel` | Archive the panel database and secrets |
 | `panelpro doctor` | Inspect the platform, database and available tools |
 | `panelpro version` | Print the installed version |

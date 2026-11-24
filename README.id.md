@@ -32,13 +32,15 @@ web yang bersih.
 ## 🚀 Mulai Cepat (server Linux)
 
 ```bash
-sudo bash scripts/install.sh --stack nginx --port 21000
+git clone https://github.com/krisna112/PanelPro-VPS.git
+cd PanelPro-VPS
+sudo bash scripts/install.sh --domain panel.example.com --email admin@example.com
 ```
 
-Jalankan dari folder project di VPS Ubuntu atau Debian. Pilih `--stack php`
-jika situs membutuhkan PHP-FPM dan MariaDB. Untuk membuka panel dari komputer
-Anda, gunakan `ssh -N -L 21000:127.0.0.1:21000 user@server`, lalu buka URL
-yang dicetak installer. Kredensial pertama ada di
+Jalankan di VPS Ubuntu atau Debian setelah DNS subdomain panel mengarah ke IP
+VPS dan port 80 serta 443 bisa diakses. Installer mencetak URL login HTTPS
+lengkap setelah Nginx dan sertifikat siap. Pilih `--stack php` jika situs
+membutuhkan PHP-FPM dan MariaDB. Kredensial pertama ada di
 `/usr/local/panelpro/data/admin_credentials.txt`.
 
 Buka **Websites → Tambah Website**, lalu pilih **Website statis**, **PHP-FPM**,

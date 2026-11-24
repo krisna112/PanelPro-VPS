@@ -83,6 +83,13 @@ def check_vhosts(tmp_path, backend_port):
                 None, f"http://127.0.0.1:{backend_port}", False, None, None)
     write_vhost(adapter, "php.example", [], str(root), "8.3", None, False, None, None)
     shutil.copyfile("/etc/nginx/fastcgi_params", tmp_path / "fastcgi_params")
+    login_config = adapter.render("nginx_panel.conf.j2", {
+        "domain": "panel.example",
+        "acme_root": str(root),
+        "backend": f"http://127.0.0.1:{backend_port}",
+        "certificate": {"cert_path": str(cert_file), "key_path": str(key_file)},
+    })
+    (adapter.conf_dir / "panelpro-panel.conf").write_text(login_config, encoding="utf-8")
 
     for file in adapter.conf_dir.glob("*.conf"):
         config = file.read_text(encoding="utf-8")
@@ -124,9 +131,11 @@ def check_vhosts(tmp_path, backend_port):
             assert request(http_port, "static.example", "/")[2] == "https://static.example/"
             assert request(tls_port, "www.static.example", "/", tls=True)[:2] == (200, b"site build")
             assert request(tls_port, "static.example", "/index.php", tls=True)[0] == 404
-            for host in ("static.example", "proxy.example"):
+            for host in ("static.example", "proxy.example", "panel.example"):
                 assert request(http_port, host, "/.well-known/acme-challenge/test-token")[:2] == (200, b"challenge")
             assert request(http_port, "proxy.example", "/health?probe=1")[:2] == (200, b"/health?probe=1")
+            assert request(http_port, "panel.example", "/demo-entry")[2] == "https://panel.example/demo-entry"
+            assert request(tls_port, "panel.example", "/demo-entry", tls=True)[:2] == (200, b"/demo-entry")
         finally:
             if nginx.poll() is None:
                 nginx.terminate()

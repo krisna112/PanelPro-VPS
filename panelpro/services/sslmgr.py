@@ -49,6 +49,9 @@ def issue_letsencrypt(
     aliases: list[str],
     webroot: str,
     email: str,
+    *,
+    cert_name: str | None = None,
+    deploy_hook: str | None = None,
 ) -> dict:
     """Issue/renew via certbot webroot; returns parsed cert info + paths."""
     domain = validate_cert_domain(domain)
@@ -62,12 +65,14 @@ def issue_letsencrypt(
     for d in [domain, *aliases]:
         if d and d not in domains:
             domains.append(d)
-    name = _certbot_name(domain)
+    name = cert_name or _certbot_name(domain)
     args = ["certbot", "certonly", "--webroot", "-w", webroot, "--non-interactive",
             "--agree-tos", "--keep-until-expiring", "--expand", "--cert-name", name]
     for d in domains:
         args += ["-d", d]
     args += ["-m", email or "admin@" + domain]
+    if deploy_hook:
+        args += ["--deploy-hook", deploy_hook]
     res = run(args, timeout=180)
     if res.code != 0:
         raise PanelError(f"certbot failed: {(res.stderr or res.stdout)[-400:]}", 500)
