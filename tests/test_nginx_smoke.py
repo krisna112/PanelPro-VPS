@@ -103,6 +103,7 @@ def check_vhosts(tmp_path, backend_port):
         f"pid {tmp_path / 'nginx.pid'};\n"
         "events {}\n"
         "http {\n"
+        "    access_log off;\n"
         "    client_body_temp_path client-body;\n"
         "    proxy_temp_path proxy-temp;\n"
         "    fastcgi_temp_path fastcgi-temp;\n"
@@ -113,7 +114,8 @@ def check_vhosts(tmp_path, backend_port):
         encoding="utf-8",
     )
     args = [NGINX, "-p", str(tmp_path), "-c", str(conf), "-e", "stderr"]
-    subprocess.run([*args, "-t"], check=True, capture_output=True, text=True)
+    test_config = subprocess.run([*args, "-t"], capture_output=True, text=True)
+    assert test_config.returncode == 0, test_config.stderr
     with subprocess.Popen([*args, "-g", "daemon off;"], stderr=subprocess.PIPE) as nginx:
         try:
             deadline = time.monotonic() + 5
