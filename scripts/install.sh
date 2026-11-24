@@ -193,17 +193,12 @@ venv/bin/python -m pip install --quiet -r requirements.txt
 bash scripts/vendor_assets.sh
 
 export PANELPRO_HOME="$INSTALL_DIR"
-venv/bin/python -m panelpro set-port "$PANEL_PORT"
 install -d -m 0700 "$INSTALL_DIR/data" "$INSTALL_DIR/data/ssl" "$INSTALL_DIR/tmp" "$INSTALL_DIR/backup"
-cat > venv/bin/panelpro <<'LAUNCHER'
-#!/usr/bin/env bash
-set -euo pipefail
-panel_home="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-export PANELPRO_HOME="$panel_home"
-cd "$panel_home"
-exec "$panel_home/venv/bin/python" -m panelpro "$@"
-LAUNCHER
-chmod 0755 venv/bin/panelpro
+venv/bin/python -m panelpro set-port "$PANEL_PORT"
+if [[ $INTERACTIVE == true ]]; then
+  venv/bin/python -m panelpro setup-admin
+fi
+bash scripts/install_cli.sh "$INSTALL_DIR"
 
 cat > /etc/systemd/system/panelpro.service <<UNIT
 [Unit]
@@ -267,6 +262,7 @@ if [[ -f "$INSTALL_DIR/data/admin_credentials.txt" ]]; then
   echo "Initial credentials: $INSTALL_DIR/data/admin_credentials.txt"
 fi
 echo "CLI: $INSTALL_DIR/venv/bin/panelpro"
+echo "Terminal menu: sudo panelpro menu"
 if [[ $DOMAIN_FAILED == true ]]; then
   exit 1
 fi

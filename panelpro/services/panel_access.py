@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import logging
+import re
 import secrets
 import time
+from contextlib import contextmanager, nullcontext
 from hashlib import sha256
 from pathlib import Path
 
+from panelpro.config import CFG
 from panelpro.core import settings_store
 from panelpro.core.database import SessionLocal
 from panelpro.core.errors import PanelError
@@ -20,6 +23,33 @@ MANAGED_HEADER = "# Managed by PanelPro setup-domain\n"
 log = logging.getLogger(__name__)
 
 
+@contextmanager
+def access_lock():
+    """Serialize panel access changes across terminal commands."""
+    import fcntl
+
+    with (CFG.data_dir / "setup-domain.lock").open("a") as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as exc:
+            raise PanelError("Another panel access change is already running.", 409) from exc
+        yield
+
+
+def listener_host() -> str:
+    command = run(["systemctl", "show", "--property=ExecStart", "--value", "panelpro"], check=True).stdout
+    match = re.search(r"\s--host[ =]([a-zA-Z0-9_.:-]+)(?=\s|$)", command)
+    return match[1] if match else "127.0.0.1"
+
+
+def local_url(port: int, host: str = "127.0.0.1") -> str:
+    host = {"0.0.0.0": "127.0.0.1", "::": "::1"}.get(host, host)
+    if ":" in host:
+        host = f"[{host}]"
+    scheme = "https" if settings_store.get_setting("panel_ssl") else "http"
+    return f"{scheme}://{host}:{port}"
+
+
 def _probe(args: list[str], expected: str, error: str) -> None:
     for attempt in range(12):
         result = run(["curl", "--noproxy", "*", "-fsS", "--max-time", "3", *args], timeout=5)
@@ -28,6 +58,17 @@ def _probe(args: list[str], expected: str, error: str) -> None:
         if attempt < 11:
             time.sleep(0.5)
     raise PanelError(error, 502)
+
+
+def _probe_backend(url: str) -> None:
+    tls_args = ["--insecure"] if url.startswith("https://") else []
+    _probe([*tls_args, f"{url}/api/health"], '"app":"PanelPro"',
+           f"PanelPro is unavailable at {url}. Check the panelpro service and configured port.")
+
+
+def _probe_domain(domain: str) -> None:
+    _probe(["--resolve", f"{domain}:443:127.0.0.1", f"https://{domain}/api/health"],
+           '"app":"PanelPro"', f"HTTPS did not reach PanelPro at {domain}.")
 
 
 def _check_domain_available(domain: str) -> None:
@@ -58,10 +99,8 @@ def setup_domain(domain: str, email: str) -> str:
     if not entry:
         raise PanelError("Start PanelPro before configuring its public domain.", 400)
     port = int(settings_store.get_setting("panel_port"))
-    backend_tls = bool(settings_store.get_setting("panel_ssl"))
-    backend = f"{'https' if backend_tls else 'http'}://127.0.0.1:{port}"
-    _probe([*(["--insecure"] if backend_tls else []), f"{backend}/api/health"], '"app":"PanelPro"',
-           f"PanelPro is unavailable at {backend}. Check the panelpro service and configured port.")
+    backend = local_url(port)
+    _probe_backend(backend)
 
     challenge_dir = ACME_ROOT / ".well-known" / "acme-challenge"
     challenge_dir.mkdir(parents=True, exist_ok=True)
@@ -99,8 +138,7 @@ def setup_domain(domain: str, email: str) -> str:
                 restart_attempted = True
                 run(["systemctl", "restart", "panelpro"], check=True)
             apply()
-            _probe(["--resolve", f"{domain}:443:127.0.0.1", f"https://{domain}/api/health"],
-                   '"app":"PanelPro"', f"HTTPS did not reach PanelPro at {domain}.")
+            _probe_domain(domain)
     except BaseException:
         try:
             settings_store.set_setting("panel_domain", previous_domain)
@@ -111,3 +149,44 @@ def setup_domain(domain: str, email: str) -> str:
             log.exception("Failed to restore the previous panel settings")
         raise
     return f"https://{domain}/{entry}"
+
+
+def change_port(port: int) -> None:
+    """Apply the new listener port and keep the managed HTTPS route working."""
+    with access_lock():
+        previous = int(settings_store.get_setting("panel_port"))
+        if port == previous:
+            return
+        domain = settings_store.get_setting("panel_domain")
+        config = nullcontext()
+        if domain:
+            adapter = webservers.detect_webserver("nginx")
+            path = adapter.conf_dir / "panelpro-panel.conf"
+            current_config = path.read_text(encoding="utf-8")
+            previous_proxy = f"    proxy_pass {local_url(previous)};\n"
+            if not current_config.startswith(MANAGED_HEADER) or current_config.count(previous_proxy) != 1:
+                raise PanelError("Panel HTTPS configuration is out of sync. Repair it with setup-domain first.", 409)
+            updated_config = current_config.replace(previous_proxy, f"    proxy_pass {local_url(port)};\n")
+            config = webservers.config_transaction(adapter, [path])
+
+        host = listener_host()
+        was_active = run(["systemctl", "is-active", "--quiet", "panelpro"]).ok
+        try:
+            with config as apply:
+                if apply:
+                    webservers.write_config(path, updated_config.encode("utf-8"))
+                settings_store.set_setting("panel_port", port)
+                run(["systemctl", "restart", "panelpro"], check=True)
+                _probe_backend(local_url(port, host))
+                run(["systemctl", "is-active", "--quiet", "panelpro"], check=True)
+                if apply:
+                    apply()
+                    _probe_domain(domain)
+        except BaseException:
+            try:
+                settings_store.set_setting("panel_port", previous)
+                action = "restart" if was_active else "stop"
+                run(["systemctl", action, "panelpro"], check=True)
+            except Exception:
+                log.exception("Failed to restore the previous panel port")
+            raise

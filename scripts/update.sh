@@ -20,6 +20,7 @@ if [[ $SOURCE_DIR == "$INSTALL_DIR" ]]; then
   bash "$INSTALL_DIR/scripts/vendor_assets.sh"
   systemctl restart panelpro
   systemctl is-active --quiet panelpro
+  bash "$INSTALL_DIR/scripts/install_cli.sh" "$INSTALL_DIR"
   exit 0
 fi
 
@@ -62,4 +63,5 @@ done
 systemctl restart panelpro
 sleep 1
 systemctl is-active --quiet panelpro
+bash "$INSTALL_DIR/scripts/install_cli.sh" "$INSTALL_DIR"
 echo "PanelPro updated and restarted."

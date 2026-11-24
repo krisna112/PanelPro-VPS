@@ -1,6 +1,8 @@
 """PanelPro command line interface.
 
     panelpro start [--host H] [--port P] [--dev]
+    panelpro menu
+    panelpro setup-admin
     panelpro reset-password [--username NAME]
     panelpro set-port PORT
     panelpro set-entry PATH
@@ -17,7 +19,9 @@ import os
 import re
 import shutil
 import sys
+import warnings
 from datetime import datetime
+from getpass import GetPassWarning, getpass
 
 from panelpro.config import CFG
 from panelpro.constants import APP_NAME, VERSION
@@ -54,6 +58,51 @@ def cmd_start(args) -> int:
         access_log=args.dev, proxy_headers=bool(settings_store.get_setting("trust_proxy")),
         forwarded_allow_ips="127.0.0.1,::1", **ssl_options,
     )
+    return 0
+
+
+def cmd_setup_admin(args) -> int:
+    """Prompt for the first administrator before the service starts."""
+    from sqlalchemy import text
+
+    from panelpro.core.security import hash_password
+    from panelpro.models.tables import User
+
+    with _open_db() as db:
+        if db.query(User.id).first() is not None:
+            print("PanelPro already has login accounts. Use your existing credentials.")
+            return 0
+        db.rollback()
+
+        try:
+            while True:
+                username = input("Administrator username [admin]: ").strip() or "admin"
+                if re.fullmatch(r"[a-zA-Z0-9_.-]{1,64}", username):
+                    break
+                print("Use up to 64 letters, digits, dots, underscores, or hyphens.")
+            with warnings.catch_warnings():
+                warnings.simplefilter("error", GetPassWarning)
+                while True:
+                    password = getpass("Administrator password: ")
+                    if len(password) < 8 or len(password.encode("utf-8")) > 72:
+                        print("Use at least 8 characters and at most 72 UTF-8 bytes.")
+                        continue
+                    if password == getpass("Confirm password: "):
+                        break
+                    print("Passwords do not match. Try again.")
+        except (EOFError, KeyboardInterrupt, GetPassWarning):
+            print("Administrator setup requires an interactive terminal with hidden password input.", file=sys.stderr)
+            return 1
+
+        password_hash = hash_password(password)
+        db.execute(text("BEGIN IMMEDIATE"))
+        if db.query(User.id).first() is not None:
+            print("PanelPro already has login accounts. Use your existing credentials.")
+            return 0
+        db.add(User(username=username, password_hash=password_hash, role="admin"))
+        db.commit()
+
+    print(f"Administrator '{username}' created. Use the password you entered to sign in.")
     return 0
 
 
@@ -101,8 +150,8 @@ def cmd_set_entry(args) -> int:
     from panelpro.core import settings_store
 
     path = str(args.path)
-    if not re.match(r"^[a-zA-Z0-9_-]{4,32}$", path):
-        print("Entry path must be 4-32 chars (letters, digits, -, _).", file=sys.stderr)
+    if not settings_store.valid_entry_path(path):
+        print("Entry path must be 4-32 chars (letters, digits, -, _) and not reserved.", file=sys.stderr)
         return 1
     db = _open_db()
     try:
@@ -122,18 +171,12 @@ def cmd_setup_domain(args) -> int:
         print("PanelPro must be installed and running on this VPS.", file=sys.stderr)
         return 1
 
-    import fcntl
-
     from panelpro.core.errors import PanelError
-    from panelpro.services.panel_access import setup_domain
+    from panelpro.services.panel_access import access_lock, setup_domain
 
     try:
-        with (CFG.data_dir / "setup-domain.lock").open("a") as lock:
-            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        with access_lock():
             url = setup_domain(args.domain, args.email)
-    except BlockingIOError:
-        print("Another panel domain setup is already running.", file=sys.stderr)
-        return 1
     except (OSError, PanelError) as exc:
         print(f"Panel domain setup failed: {exc}", file=sys.stderr)
         return 1
@@ -189,9 +232,21 @@ def cmd_version(args) -> int:
     return 0
 
 
+def cmd_menu(args) -> int:
+    from panelpro.console import menu
+
+    return menu()
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="panelpro", description=f"{APP_NAME} control panel CLI")
     sub = parser.add_subparsers(dest="command", required=True)
+
+    p = sub.add_parser("menu", help="open the terminal menu on an installed VPS")
+    p.set_defaults(fn=cmd_menu)
+
+    p = sub.add_parser("setup-admin", help="set the first administrator's username and password")
+    p.set_defaults(fn=cmd_setup_admin)
 
     p = sub.add_parser("start", help="start the panel server")
     p.add_argument("--host", default=None)
@@ -225,6 +280,9 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("version", help="print version")
     p.set_defaults(fn=cmd_version)
 
+    argv = sys.argv[1:] if argv is None else argv
+    if not argv and sys.stdin.isatty() and sys.platform == "linux":
+        argv = ["menu"]
     args = parser.parse_args(argv)
     return args.fn(args)
 

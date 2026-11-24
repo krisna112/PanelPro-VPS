@@ -1,8 +1,11 @@
 """Regression tests for publishing a panel hostname and recovering on failure."""
 
+from contextlib import nullcontext
+
 import pytest
 
 from panelpro.core.errors import PanelError
+from panelpro.core.syscmd import CmdResult
 from panelpro.services import panel_access, webservers
 
 
@@ -76,3 +79,29 @@ def test_failed_setup_restores_nginx_config_and_settings(monkeypatch, panel_doma
     assert path.read_text(encoding="utf-8") == previous
     assert settings["panel_domain"] == "old.example"
     assert settings["trust_proxy"] is False
+
+
+@pytest.mark.parametrize("probe_fails", [False, True])
+def test_port_change_keeps_the_https_route_or_restores_it(monkeypatch, panel_domain, probe_fails):
+    path, settings = panel_domain
+    previous = panel_access.MANAGED_HEADER + "    proxy_pass http://127.0.0.1:24500;\n"
+    path.write_text(previous, encoding="utf-8")
+    settings["panel_domain"] = "panel.example"
+    monkeypatch.setattr(panel_access, "access_lock", nullcontext)
+    monkeypatch.setattr(panel_access, "run", lambda *args, **kwargs: CmdResult(0, "", ""))
+    monkeypatch.setattr(panel_access, "_probe_backend", lambda url: None)
+
+    def probe(domain):
+        assert "proxy_pass http://127.0.0.1:24600;" in path.read_text(encoding="utf-8")
+        if probe_fails:
+            raise PanelError("HTTPS probe failed", 502)
+
+    monkeypatch.setattr(panel_access, "_probe_domain", probe)
+    if probe_fails:
+        with pytest.raises(PanelError, match="HTTPS probe failed"):
+            panel_access.change_port(24600)
+        assert settings["panel_port"] == 24500
+        assert path.read_text(encoding="utf-8") == previous
+    else:
+        panel_access.change_port(24600)
+        assert settings["panel_port"] == 24600

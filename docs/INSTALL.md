@@ -23,8 +23,10 @@ sudo bash scripts/install.sh
 
 The installer asks for the panel hostname, your Let's Encrypt email, and the
 web stack. Choose Nginx for static sites and reverse proxies or choose the
-PHP stack for Nginx, PHP-FPM, and MariaDB on Ubuntu or Debian. After the
-service starts and the certificate is issued, open the full HTTPS login URL
+PHP stack for Nginx, PHP-FPM, and MariaDB on Ubuntu or Debian. On a fresh
+installation, enter the administrator username and password when prompted.
+The installer hides the password while you type and asks you to confirm it.
+After the service starts and the certificate is issued, open the full HTTPS login URL
 printed by the installer. The panel backend uses port 21000 on loopback and
 website traffic uses ports 80 and 443. Certbot reloads Nginx when it renews the
 panel certificate.
@@ -43,9 +45,27 @@ with just `--non-interactive` for a panel-only installation with the default
 local listener. If you leave the hostname blank in the wizard or if domain setup
 fails, the installer prints the local URL and SSH tunnel command.
 
-Read the first admin password from
-`/usr/local/panelpro/data/admin_credentials.txt` on the server. Delete the file
-after saving the credentials. The path follows your `--dir` option.
+Sign in with the credentials you entered. Unattended installations generate
+an initial admin password in `/usr/local/panelpro/data/admin_credentials.txt`.
+Delete that file after saving the generated credentials. The path follows
+your `--dir` option.
+
+## Terminal administration
+
+After installing or running `scripts/update.sh`, open the menu on the VPS.
+
+```bash
+sudo panelpro menu
+```
+
+The menu shows the login URL, admin usernames, and service status. Use it to
+start, stop, or restart the service, change the backend port or login path,
+reset a login password, set up the HTTPS domain, or view recent logs. Changing
+the backend port through the menu updates the managed HTTPS route and checks
+the new listener before reporting success.
+
+If `/usr/local/bin/panelpro` is already in use, run
+`sudo /usr/local/panelpro/venv/bin/panelpro menu` with your install directory.
 
 ## Add an HTTPS login domain to an existing installation
 
@@ -112,6 +132,8 @@ sudo bash scripts/uninstall.sh --purge   # also delete the install directory
 | CLI command | Purpose |
 | --- | --- |
 | `panelpro start [--host H] [--port P] [--dev]` | Run the server |
+| `panelpro menu` | Open the terminal administration menu |
+| `panelpro setup-admin` | Set the first admin username and password interactively |
 | `panelpro reset-password [--username admin]` | Generate a password and revoke existing sessions |
 | `panelpro set-port 21000` | Change the listener port, then restart the panel |
 | `panelpro set-entry my-secret-path` | Change the private entry path |

@@ -14,6 +14,10 @@ echo ">> Stopping panelpro service…"
 systemctl disable --now panelpro 2>/dev/null || true
 rm -f /etc/systemd/system/panelpro.service
 systemctl daemon-reload 2>/dev/null || true
+CLI_LINK=/usr/local/bin/panelpro
+if [[ -L $CLI_LINK && $(readlink -- "$CLI_LINK") == "$(realpath -m -- "$INSTALL_DIR")/venv/bin/panelpro" ]]; then
+  rm -f -- "$CLI_LINK"
+fi
 
 if [[ "${1:-}" == "--purge" ]]; then
   echo ">> Removing $INSTALL_DIR (including panel database and secrets)…"

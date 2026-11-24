@@ -41,8 +41,11 @@ Jalankan di VPS Ubuntu atau Debian setelah DNS subdomain panel mengarah ke IP
 VPS dan port 80 serta 443 bisa diakses. Isi subdomain panel, email Let's Encrypt,
 dan pilihan stack di terminal. Pilih stack PHP jika situs membutuhkan PHP-FPM
 dan MariaDB. Buka URL login HTTPS yang dicetak installer saat selesai.
-Kredensial pertama ada di
-`/usr/local/panelpro/data/admin_credentials.txt`.
+Untuk instalasi baru, buat username dan password admin saat diminta.
+Installer menyembunyikan password saat diketik dan meminta konfirmasi.
+
+Jalankan `sudo panelpro menu` di VPS untuk melihat URL login, mengelola
+layanan, mengganti port atau path login, mereset password, dan mengatur domain.
 
 Buka **Websites → Tambah Website**, lalu pilih **Website statis**, **PHP-FPM**,
 atau **Reverse proxy**. Setelah DNS mengarah ke VPS, gunakan menu **SSL / HTTPS**

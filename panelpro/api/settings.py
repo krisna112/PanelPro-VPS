@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import re
-
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
@@ -19,9 +17,6 @@ EDITABLE_KEYS = {
     "ip_allowlist", "trust_proxy", "panel_ssl", "threshold_disk",
     "threshold_cpu", "backup_dir",
 }
-
-ENTRY_RE = re.compile(r"^[a-zA-Z0-9_-]{4,32}$")
-
 
 class SettingBody(BaseModel):
     key: str
@@ -59,7 +54,7 @@ def set_setting(body: SettingBody, ctx=Depends(require_role("admin"))):
                        "note": "Restart the panel service to apply."})
     if body.key == "entry_path":
         entry = str(value)
-        if not ENTRY_RE.match(entry) or entry.lower() in {"api", "assets", "ws", "docs", "openapi.json", "health"}:
+        if not settings_store.valid_entry_path(entry):
             raise PanelError(
                 "Entry path must be 4-32 chars (letters/digits/-/_) and not reserved.", 400
             )

@@ -65,9 +65,11 @@ sudo bash scripts/install.sh
 On Ubuntu or Debian, point the panel hostname at the VPS and allow incoming
 traffic on ports 80 and 443 before installing. Enter the panel hostname,
 Let's Encrypt email, and web stack at the prompts. Use the PHP stack for
-PHP-FPM and MariaDB. Open the HTTPS login URL printed at the end. Initial
-credentials are stored in
-`/usr/local/panelpro/data/admin_credentials.txt`.
+PHP-FPM and MariaDB. On a fresh install, set the administrator username and
+password when prompted, then open the HTTPS login URL printed at the end.
+
+Run `sudo panelpro menu` on the VPS to view the login URL, control the service,
+change the port or entry path, reset a password, or set up a panel domain.
 
 From **Websites → Add Website**, choose **Static website**, **PHP-FPM**, or
 **Reverse proxy**. Once DNS points at the VPS, open **SSL / HTTPS** on the site

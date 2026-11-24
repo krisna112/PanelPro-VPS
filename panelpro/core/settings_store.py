@@ -7,6 +7,7 @@ cache coherent within the single uvicorn process.
 
 from __future__ import annotations
 
+import re
 import threading
 
 from panelpro.constants import DEFAULT_PANEL_PORT
@@ -34,6 +35,12 @@ DEFAULTS: dict = {
 
 _lock = threading.Lock()
 _cache: dict | None = None
+
+
+def valid_entry_path(path: str) -> bool:
+    return bool(re.fullmatch(r"[a-zA-Z0-9_-]{4,32}", path)) and path.lower() not in {
+        "api", "assets", "ws", "docs", "openapi.json", "health",
+    }
 
 
 def _load_cache() -> dict:
