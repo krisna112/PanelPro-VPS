@@ -30,7 +30,7 @@ from one clean web interface.
 | ⏰ **Cron** | Marker-based crontab engine, shell/URL/script tasks, run-now, per-job logs, next-run preview |
 | 📈 **Monitor** | psutil realtime + 7-day history (CPU/mem/disk/net/load), top processes, threshold alerts |
 | 🐳 **Docker** | Containers, images, volumes, networks, stats, exec, logs, compose support |
-| 🛍️ **App Store** | Manifest-driven one-click installers: WordPress, phpMyAdmin, Nextcloud, Portainer, Uptime Kuma, n8n, Redis Commander, Grafana |
+| 🛍️ **App Store** | Searchable catalog with native web servers, databases and runtimes, plus one-click CMS and Docker apps |
 | 💾 **Backups** | Scheduled jobs (sites + DB dumps → tar.gz), retention, targets: local / SFTP / rclone, safe restore |
 | ⌨️ **Terminal** | WebSocket SSH (paramiko) + xterm.js |
 | 🔔 **Notifications** | Webhook, Telegram, SMTP; events: login fail, disk/CPU thresholds, SSL expiry, backups |
@@ -67,6 +67,8 @@ traffic on ports 80 and 443 before installing. Enter the panel hostname,
 Let's Encrypt email, and web stack at the prompts. Use the PHP stack for
 PHP-FPM and MariaDB. On a fresh install, set the administrator username and
 password when prompted, then open the HTTPS login URL printed at the end.
+New Ubuntu and Debian installations with Nginx also set up phpMyAdmin.
+Open its **SSH access** action under **App Store → Installed** for access.
 
 Run `sudo panelpro menu` on the VPS to view the login URL, control the service,
 change the port or entry path, reset a password, or set up a panel domain.

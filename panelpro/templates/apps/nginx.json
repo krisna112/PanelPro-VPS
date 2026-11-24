@@ -1,0 +1,13 @@
+{
+  "id": "nginx",
+  "name": "Nginx",
+  "category": "web",
+  "description": "Web server for static files, PHP-FPM and reverse proxies.",
+  "type": "native",
+  "version": "distro",
+  "packages": [
+    "nginx"
+  ],
+  "unit": "nginx.service",
+  "docs_url": "https://nginx.org/"
+}

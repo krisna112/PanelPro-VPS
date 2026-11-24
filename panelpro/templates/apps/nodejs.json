@@ -1,0 +1,13 @@
+{
+  "id": "nodejs",
+  "name": "Node.js + npm",
+  "category": "runtime",
+  "description": "JavaScript runtime and npm for Node.js applications.",
+  "type": "native",
+  "version": "distro",
+  "packages": [
+    "nodejs",
+    "npm"
+  ],
+  "docs_url": "https://nodejs.org/"
+}

@@ -47,6 +47,7 @@ def run(
     cwd: str | None = None,
     check: bool = False,
     env: dict[str, str] | None = None,
+    input_text: str | None = None,
 ) -> CmdResult:
     """Run an argument-list command without involving a shell."""
     merged_env = {**os.environ, **env} if env else None
@@ -58,6 +59,7 @@ def run(
             timeout=timeout,
             cwd=cwd,
             env=merged_env,
+            input=input_text,
         )
     except FileNotFoundError as exc:
         raise PanelError(f"Command not found: {args[0]}", 500) from exc

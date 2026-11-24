@@ -25,7 +25,6 @@ from panelpro.core.syscmd import run, which
 
 DOMAIN_RE = re.compile(r"(?:\*\.)?(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?")
 PROXY_URL_RE = re.compile(r"https?://[a-zA-Z0-9.:\[\]/_%~?&=+@,-]+")
-PHP_VERSION_RE = re.compile(r"[0-9]{1,2}\.[0-9]{1,2}")
 CA_BUNDLES = (Path("/etc/ssl/certs/ca-certificates.crt"), Path("/etc/pki/tls/certs/ca-bundle.crt"))
 CONFIG_LOCK = RLock()
 log = logging.getLogger(__name__)
@@ -42,9 +41,9 @@ def validate_domain(domain: str) -> str:
 
 
 def php_socket_path(version: str) -> str:
-    if not PHP_VERSION_RE.fullmatch(version):
-        raise PanelError("Invalid PHP version.", 400)
-    return f"/run/php/php{version}-fpm.sock"
+    from panelpro.services.phpmgr import socket_path
+
+    return socket_path(version).as_posix()
 
 
 def validate_php_runtime(version: str | None) -> str | None:

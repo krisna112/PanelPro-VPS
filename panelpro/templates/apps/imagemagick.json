@@ -1,0 +1,12 @@
+{
+  "id": "imagemagick",
+  "name": "ImageMagick",
+  "category": "tools",
+  "description": "Command-line tools for processing images.",
+  "type": "native",
+  "version": "distro",
+  "packages": [
+    "imagemagick"
+  ],
+  "docs_url": "https://imagemagick.org/"
+}

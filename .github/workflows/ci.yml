@@ -38,3 +38,13 @@ jobs:
         env:
           PANELPRO_HOME: ${{ runner.temp }}/panelpro-home
         run: python -m pytest -v
+      - name: Verify native phpMyAdmin installation
+        if: runner.os == 'Linux' && matrix.python == '3.12'
+        run: |
+          sudo systemctl start nginx.service
+          sudo env PANELPRO_HOME="$RUNNER_TEMP/panelpro-app-smoke" \
+            PANELPRO_WWW_ROOT="$RUNNER_TEMP/panelpro-app-smoke/www" \
+            "$(command -v python)" -m panelpro install-app phpmyadmin
+          curl -fsS http://127.0.0.1:8881/ -o "$RUNNER_TEMP/phpmyadmin.html"
+          grep -q 'pma_username' "$RUNNER_TEMP/phpmyadmin.html"
+          ss -ltn 'sport = :8881' | grep -F '127.0.0.1:8881'

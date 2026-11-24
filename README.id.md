@@ -22,7 +22,7 @@ web yang bersih.
 | ⏰ **Cron** | mesin crontab ber-marker, tugas shell/URL/script, jalankan sekarang, log per tugas |
 | 📈 **Monitor** | psutil realtime + riwayat 7 hari (CPU/mem/disk/net/load), proses teratas, alert threshold |
 | 🐳 **Docker** | containers, images, volumes, networks, stats, exec, logs, compose |
-| 🛍️ **App Store** | installer 1 klik: WordPress, phpMyAdmin, Nextcloud, Portainer, Uptime Kuma, n8n, Redis Commander, Grafana |
+| 🛍️ **App Store** | Pencarian dan filter untuk aplikasi Docker, CMS, paket webserver, database, dan runtime seperti PHP-FPM, Node.js, serta Python |
 | 💾 **Backup** | job terjadwal (situs + dump DB → tar.gz), retensi, target lokal/SFTP/rclone, restore aman |
 | ⌨️ **Terminal** | WebSocket SSH (paramiko) + xterm.js |
 | 🔔 **Notifikasi** | webhook, Telegram, SMTP; event login gagal, disk/CPU tinggi, SSL kadaluarsa, backup |
@@ -43,6 +43,9 @@ dan pilihan stack di terminal. Pilih stack PHP jika situs membutuhkan PHP-FPM
 dan MariaDB. Buka URL login HTTPS yang dicetak installer saat selesai.
 Untuk instalasi baru, buat username dan password admin saat diminta.
 Installer menyembunyikan password saat diketik dan meminta konfirmasi.
+Pada instalasi baru Ubuntu atau Debian dengan Nginx, phpMyAdmin dipasang
+otomatis. Buka **App Store → Terinstall → phpMyAdmin → Akses SSH** untuk
+melihat perintah aksesnya.
 
 Jalankan `sudo panelpro menu` di VPS untuk melihat URL login, mengelola
 layanan, mengganti port atau path login, dan mengatur domain. Pilih opsi `10`

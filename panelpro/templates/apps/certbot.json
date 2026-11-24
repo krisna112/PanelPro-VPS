@@ -1,0 +1,12 @@
+{
+  "id": "certbot",
+  "name": "Certbot",
+  "category": "tools",
+  "description": "ACME client for issuing and renewing Let's Encrypt certificates.",
+  "type": "native",
+  "version": "distro",
+  "packages": [
+    "certbot"
+  ],
+  "docs_url": "https://certbot.eff.org/"
+}

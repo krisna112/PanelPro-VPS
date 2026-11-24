@@ -1,0 +1,13 @@
+{
+  "id": "mariadb",
+  "name": "MariaDB",
+  "category": "database",
+  "description": "Relational database for PHP and MySQL-compatible applications.",
+  "type": "native",
+  "version": "distro",
+  "packages": [
+    "mariadb-server"
+  ],
+  "unit": "mariadb.service",
+  "docs_url": "https://mariadb.org/"
+}

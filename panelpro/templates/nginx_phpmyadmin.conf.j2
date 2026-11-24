@@ -1,0 +1,22 @@
+# Managed by PanelPro for phpMyAdmin
+server {
+    listen 127.0.0.1:{{ port }};
+    server_name localhost;
+    root {{ root | config_path }};
+    index index.php;
+
+    location / {
+        try_files $uri $uri/ =404;
+    }
+
+    location ~ (^/setup(?:/|$)|/\.) {
+        deny all;
+    }
+
+    location ~ \.php$ {
+        try_files $uri =404;
+        include fastcgi_params;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        fastcgi_pass unix:{{ socket }};
+    }
+}

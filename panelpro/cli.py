@@ -268,6 +268,26 @@ def cmd_backup_panel(args) -> int:
     return 0
 
 
+def cmd_install_app(args) -> int:
+    if sys.platform != "linux" or os.geteuid() != 0:
+        print("Run install-app as root on the Linux VPS.", file=sys.stderr)
+        return 1
+
+    from panelpro.core.errors import PanelError
+    from panelpro.services import apps
+
+    try:
+        with _open_db() as db:
+            row, _ = apps.install_app(db, apps.load_manifest(args.app_id), {})
+    except (OSError, PanelError) as exc:
+        print(f"App installation failed: {exc}", file=sys.stderr)
+        return 1
+    print(f"Installed {row.name}")
+    if row.app_id == "phpmyadmin" and row.type == "native":
+        print(f"phpMyAdmin is available at http://127.0.0.1:{row.port}/ through an SSH tunnel.")
+    return 0
+
+
 def cmd_doctor(args) -> int:
     tools = ["nginx", "apache2", "mysql", "mysqldump", "psql", "redis-cli",
              "mongosh", "php", "certbot", "docker", "ufw", "firewall-cmd",
@@ -337,6 +357,10 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("domain")
     p.add_argument("--email", required=True, help="Let's Encrypt account email")
     p.set_defaults(fn=cmd_setup_domain)
+
+    p = sub.add_parser("install-app", help="install an App Store entry with its defaults")
+    p.add_argument("app_id")
+    p.set_defaults(fn=cmd_install_app)
 
     p = sub.add_parser("backup-panel", help="back up panel database + secrets")
     p.set_defaults(fn=cmd_backup_panel)

@@ -50,6 +50,33 @@ an initial admin password in `/usr/local/panelpro/data/admin_credentials.txt`.
 Delete that file after saving the generated credentials. The path follows
 your `--dir` option.
 
+## PHP-FPM and phpMyAdmin
+
+On a fresh Debian or Ubuntu installation that provisions Nginx, the installer
+also sets up phpMyAdmin. It installs the distribution's PHP-FPM and reuses an
+existing local MySQL or MariaDB installation, or installs MariaDB when needed.
+Use `--skip-phpmyadmin` when you want to omit this setup. With `--stack none`,
+install phpMyAdmin once Nginx is installed and running.
+
+On an existing VPS, choose **App Store → phpMyAdmin → Install** after updating
+PanelPro. You can also run `sudo panelpro install-app phpmyadmin` on the VPS.
+In the Installed list, use **SSH access** to view the tunnel command. From your
+workstation, replace `user@IP_VPS` with your SSH login and address.
+
+```bash
+ssh -N -L 8881:127.0.0.1:8881 user@IP_VPS
+```
+
+While the tunnel is open, visit `http://127.0.0.1:8881/` and sign in with a
+MySQL or MariaDB account. Create one under **Databases** and grant access to
+the database you want to manage. The App Store's **Remove access** action
+removes the PanelPro Nginx listener and keeps the database and shared packages.
+
+**App Store → PHP-FPM** and the **PHP** page use the same installer. Choose
+the distribution default or select a version available in the server's
+repositories. The new version becomes selectable for sites after its FPM
+service starts and the Unix socket is ready.
+
 ## Terminal administration
 
 After installing or running `scripts/update.sh`, open the menu on the VPS.

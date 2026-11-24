@@ -41,8 +41,9 @@ def list_apps(db: Session = Depends(get_db), ctx=Depends(require_auth)):
             "port": row.port,
             "domain": row.domain,
             "status": apps_svc.app_status(
-                {"type": row.type, "app_id": row.app_id, "port": row.port}
+                {"type": row.type, "app_id": row.app_id, "port": row.port, "status": row.status}
             ),
+            "loopback": row.app_id == "phpmyadmin" and row.type == "native",
             "created_at": row.created_at.isoformat(),
         }
         installed.append(payload)
@@ -52,20 +53,11 @@ def list_apps(db: Session = Depends(get_db), ctx=Depends(require_auth)):
 @router.post("/install")
 def install(body: InstallBody, db: Session = Depends(get_db), ctx=Depends(require_role("operator"))):
     manifest = apps_svc.load_manifest(body.app_id)
-    result = apps_svc.install(manifest, body.params)
-    row = InstalledApp(
-        app_id=manifest["id"],
-        name=manifest["name"],
-        version=manifest.get("version", ""),
-        type=manifest.get("type", "script"),
-        install_path=result.get("app_home", ""),
-        port=manifest.get("port"),
-        domain=body.params.get("domain"),
-    )
-    db.add(row)
-    db.commit()
+    if manifest.get("type") == "native" and ctx.role != "admin":
+        raise PanelError("Administrator access is required to install system packages.", 403)
+    row, result = apps_svc.install_app(db, manifest, body.params)
     notify_event("app_installed", "App installed",
-                 f"{manifest['name']} ({manifest.get('version', '')}) installed.")
+                 f"{row.name} ({row.version}) installed.")
     return api_ok({"installed": manifest["name"], "detail": result})
 
 
@@ -74,10 +66,14 @@ def uninstall(app_row_id: int, db: Session = Depends(get_db), ctx=Depends(requir
     row = db.query(InstalledApp).filter(InstalledApp.id == app_row_id).first()
     if not row:
         raise PanelError("Installed app not found.", 404)
+    if row.type == "native" and ctx.role != "admin":
+        raise PanelError("Administrator access is required to remove native app access.", 403)
     try:
         manifest = apps_svc.load_manifest(row.app_id)
     except PanelError:
         manifest = {"id": row.app_id, "type": row.type, "name": row.name}
+    if manifest.get("type") != row.type:
+        raise PanelError("This app entry was created by an older installer and requires manual removal.", 409)
     result = apps_svc.uninstall(manifest, row.install_path)
     db.delete(row)
     db.commit()
@@ -89,7 +85,7 @@ def refresh_status(app_row_id: int, db: Session = Depends(get_db), ctx=Depends(r
     row = db.query(InstalledApp).filter(InstalledApp.id == app_row_id).first()
     if not row:
         raise PanelError("Installed app not found.", 404)
-    status = apps_svc.app_status({"type": row.type, "app_id": row.app_id, "port": row.port})
+    status = apps_svc.app_status({"type": row.type, "app_id": row.app_id, "port": row.port, "status": row.status})
     row.status = status
     db.commit()
     return api_ok({"status": status})

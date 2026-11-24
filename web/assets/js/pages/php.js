@@ -6,12 +6,14 @@ PP.pages.php = {
     extensions: [], showExt: false,
     ini: { sapi: 'fpm', content: '', path: '' },
     pool: { settings: {}, pm_max_children: '', pm_start_servers: '', pm_max_requests: '' },
-    installVersion: '',
+    installVersion: 'default', installOptions: [], installing: false, installError: '',
   }),
   methods: {
     async load() {
       try {
-        this.versions = await PP.api('php/versions');
+        [this.versions, this.installOptions] = await Promise.all([
+          PP.api('php/versions'), PP.api('php/install-options'),
+        ]);
         if (this.versions.length && !this.current) this.current = this.versions[0].version;
         if (this.current) await this.select(this.current);
       } catch (e) { PP.ui.warn(e.message); }
@@ -55,15 +57,16 @@ PP.pages.php = {
       } catch (e) { PP.ui.error(PP.t('common.error'), e.message); }
     },
     async installPhp() {
-      if (!this.installVersion) return;
-      const ok = await PP.ui.confirm('apt-get / dnf install php' + this.installVersion + '-fpm …', PP.t('php.install'));
-      if (!ok) return;
+      if (this.installing || !this.installOptions.length) return;
+      this.installing = true;
+      this.installError = '';
       try {
-        await PP.api('php/install', { method: 'POST', body: { version: this.installVersion } });
-        PP.ui.success(PP.t('php.install'));
-        this.installVersion = '';
-        this.load();
-      } catch (e) { PP.ui.error(PP.t('common.error'), e.message); }
+        const result = await PP.api('php/install', { method: 'POST', body: { version: this.installVersion } });
+        this.current = result.installed;
+        PP.ui.success(PP.t('common.installed'), 'PHP ' + result.installed);
+        await this.load();
+      } catch (e) { this.installError = e.message; }
+      finally { this.installing = false; }
     },
   },
   mounted() { this.load(); },
@@ -72,11 +75,14 @@ PP.pages.php = {
     <div class="page-head">
       <h1>{{ PP.t('menu.php') }}</h1>
       <span class="spacer"></span>
-      <div class="flex">
-        <input class="input mono" style="width:110px" v-model="installVersion" placeholder="8.2">
-        <button class="btn" @click="installPhp">{{ PP.t('php.install') }}</button>
+      <div v-if="PP.store.user?.role === 'admin'" class="flex">
+        <select v-model="installVersion" class="select" aria-label="PHP version" :disabled="installing || !installOptions.length">
+          <option v-for="version in installOptions" :key="version" :value="version">{{ version === 'default' ? PP.t('apps.distroDefault') : version }}</option>
+        </select>
+        <button class="btn" :disabled="installing || !installOptions.length" @click="installPhp">{{ PP.t(installing ? 'apps.installing' : 'php.install') }}</button>
       </div>
     </div>
+    <p v-if="installError" class="site-error" role="alert">{{ installError }}</p>
 
     <div class="btn-row mb" v-if="versions.length">
       <button v-for="v in versions" :key="v.version" class="btn"

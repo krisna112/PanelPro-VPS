@@ -70,6 +70,7 @@ INSTALL_DIR="${INSTALL_DIR:-/usr/local/panelpro}"
 STACK=""
 PANEL_DOMAIN=""
 PANEL_EMAIL=""
+INSTALL_PHPMYADMIN=true
 SOURCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 INTERACTIVE=false
 if [[ $# -eq 0 && -t 0 ]]; then
@@ -94,11 +95,13 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     --interactive) INTERACTIVE=true; shift ;;
+    --skip-phpmyadmin) INSTALL_PHPMYADMIN=false; shift ;;
     --non-interactive) INTERACTIVE=false; shift ;;
     --help)
       echo "Usage: sudo bash scripts/install.sh [--port 21000] [--host 127.0.0.1] [--dir /usr/local/panelpro] [--stack none|nginx|php]"
       echo "Run without options in a terminal for guided setup, or add --interactive with other options."
       echo "For HTTPS access, add: --domain panel.example.com --email admin@example.com"
+      echo "Use --skip-phpmyadmin to omit phpMyAdmin on a new Debian or Ubuntu installation."
       exit 0
       ;;
     *) echo "Unknown option: $1" >&2; exit 1 ;;
@@ -118,6 +121,10 @@ if [[ ! $PANEL_HOST =~ ^[a-zA-Z0-9_.:-]+$ || ! $INSTALL_DIR =~ ^/[a-zA-Z0-9._/-]
   exit 1
 fi
 INSTALL_DIR="$(realpath -m -- "$INSTALL_DIR")"
+FRESH_INSTALL=true
+if [[ -f "$INSTALL_DIR/data/panel.db" ]]; then
+  FRESH_INSTALL=false
+fi
 if [[ $INSTALL_DIR == / || ! -f "$SOURCE_DIR/panelpro/__main__.py" || ! -f "$SOURCE_DIR/requirements.txt" ]]; then
   echo "Choose an application directory and run from the complete PanelPro checkout." >&2
   exit 1
@@ -168,7 +175,7 @@ case "$STACK" in
     if command -v apt-get >/dev/null 2>&1; then
       packages=(nginx certbot)
       if [[ $STACK == php ]]; then
-        packages+=(php-fpm php-mysql mariadb-server)
+        packages+=(php-fpm php-mysql php-curl php-gd php-xml php-mbstring php-zip mariadb-server)
       fi
       apt-get install -y -qq "${packages[@]}"
     else
@@ -245,6 +252,15 @@ if [[ $READY != true ]]; then
   exit 1
 fi
 
+APP_FAILED=false
+if [[ $FRESH_INSTALL == true && $INSTALL_PHPMYADMIN == true && $STACK != none ]] && command -v apt-get >/dev/null 2>&1; then
+  echo "Setting up phpMyAdmin..."
+  if ! venv/bin/panelpro install-app phpmyadmin; then
+    APP_FAILED=true
+    echo "PanelPro started. Retry phpMyAdmin from the App Store after resolving the package or webserver error above." >&2
+  fi
+fi
+
 DOMAIN_FAILED=false
 if [[ -n $PANEL_DOMAIN ]]; then
   if ! venv/bin/panelpro setup-domain "$PANEL_DOMAIN" --email "$PANEL_EMAIL"; then
@@ -263,6 +279,6 @@ if [[ -f "$INSTALL_DIR/data/admin_credentials.txt" ]]; then
 fi
 echo "CLI: $INSTALL_DIR/venv/bin/panelpro"
 echo "Terminal menu: sudo panelpro menu"
-if [[ $DOMAIN_FAILED == true ]]; then
+if [[ $DOMAIN_FAILED == true || $APP_FAILED == true ]]; then
   exit 1
 fi

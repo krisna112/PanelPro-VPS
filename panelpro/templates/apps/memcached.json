@@ -1,0 +1,13 @@
+{
+  "id": "memcached",
+  "name": "Memcached",
+  "category": "database",
+  "description": "Local memory cache for web applications.",
+  "type": "native",
+  "version": "distro",
+  "packages": [
+    "memcached"
+  ],
+  "unit": "memcached.service",
+  "docs_url": "https://memcached.org/"
+}

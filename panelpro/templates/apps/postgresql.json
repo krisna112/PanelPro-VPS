@@ -1,0 +1,13 @@
+{
+  "id": "postgresql",
+  "name": "PostgreSQL",
+  "category": "database",
+  "description": "Relational database with SQL and JSON support.",
+  "type": "native",
+  "version": "distro",
+  "packages": [
+    "postgresql"
+  ],
+  "unit": "postgresql.service",
+  "docs_url": "https://www.postgresql.org/"
+}

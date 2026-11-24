@@ -2,15 +2,10 @@
   "id": "phpmyadmin",
   "name": "phpMyAdmin",
   "category": "tools",
-  "description": "Web administration for MySQL/MariaDB, installed into its own folder for nginx or Apache.",
-  "version": "latest",
-  "type": "script",
-  "port": null,
-  "docs_url": "https://www.phpmyadmin.net",
-  "params": [
-    {"name": "folder", "label": "Folder under www root", "default": "phpmyadmin", "required": true},
-    {"name": "db_host", "label": "MySQL host", "default": "localhost", "required": true}
-  ],
-  "install_script": "set -e\nDEST=\"{{ www_root }}/{{ folder }}\"\nmkdir -p \"$DEST\"\ncurl -sSLo /tmp/panelpro-pma.tar.gz https://www.phpmyadmin.net/downloads/phpMyAdmin-latest-all-languages.tar.gz\ntar -xzf /tmp/panelpro-pma.tar.gz --strip-components=1 -C \"$DEST\"\nrm -f /tmp/panelpro-pma.tar.gz\nif command -v chown >/dev/null 2>&1; then\n  OWNER=$(id -un www-data 2>/dev/null || id -un apache 2>/dev/null || true)\n  [ -n \"$OWNER\" ] && chown -R \"$OWNER\":\"$OWNER\" \"$DEST\"\nfi\necho \"phpMyAdmin installed at $DEST (connect to {{ db_host }})\"",
-  "uninstall_script": "rm -rf \"{{ www_root }}/{{ folder }}\"\necho \"phpMyAdmin removed\""
+  "description": "Administer MySQL or MariaDB through a local Nginx and PHP-FPM endpoint. Access it over SSH.",
+  "version": "distro",
+  "type": "native",
+  "port": 8881,
+  "docs_url": "https://docs.phpmyadmin.net/",
+  "params": []
 }

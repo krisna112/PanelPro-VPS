@@ -1,0 +1,12 @@
+{
+  "id": "sqlite",
+  "name": "SQLite CLI",
+  "category": "database",
+  "description": "Command-line tools for SQLite databases.",
+  "type": "native",
+  "version": "distro",
+  "packages": [
+    "sqlite3"
+  ],
+  "docs_url": "https://sqlite.org/"
+}

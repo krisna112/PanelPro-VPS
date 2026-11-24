@@ -3,14 +3,15 @@
 from __future__ import annotations
 
 import re
-import shutil
 from pathlib import Path
 
 from panelpro.config import CFG
 from panelpro.core.errors import PanelError
 from panelpro.core.syscmd import run, which
+from panelpro.services import packages
 
 FPM_UNIT_CANDIDATES = "php{v}-fpm", "php{v}-phpfpm", "php-fpm"
+VERSION_RE = re.compile(r"[0-9]{1,2}\.[0-9]{1,2}")
 INI_PATH_RE = re.compile(r"^/etc/php/([\d.]+)/(cli|fpm|apache2)/php\.ini$")
 
 
@@ -26,24 +27,91 @@ def detect_versions() -> list[str]:
         m = re.match(r"^php(\d+\.\d+)$", bin_path.name)
         if m:
             versions.add(m.group(1))
-    if which("php"):
-        res = run(["php", "-r", "echo PHP_MAJOR_VERSION.'.'.PHP_MINOR_VERSION;"], timeout=10)
-        if res.code == 0 and res.stdout.strip():
-            versions.add(res.stdout.strip())
-    return sorted(versions, reverse=True)
+    if version := _cli_version():
+        versions.add(version)
+    return sorted(versions, key=lambda version: tuple(map(int, version.split("."))), reverse=True)
 
 
 def fpm_unit(version: str) -> str | None:
-    from panelpro.core.syscmd import run as _run
-
+    if CFG.is_windows or not which("systemctl"):
+        return None
     for pattern in FPM_UNIT_CANDIDATES:
         unit = pattern.format(v=version)
-        if unit == "php-fpm" and version:
+        if unit == "php-fpm" and version != _cli_version():
             continue
-        res = _run(["systemctl", "list-unit-files", unit + ".service"], timeout=15)
-        if res.code == 0 and unit in res.stdout:
+        res = run(["systemctl", "show", "--property=LoadState", "--value", unit + ".service"], timeout=15)
+        if res.ok and res.stdout.strip() == "loaded":
             return unit + ".service"
     return None
+
+
+def _cli_version(binary: str = "php") -> str | None:
+    if not which(binary):
+        return None
+    res = run([binary, "-r", "echo PHP_MAJOR_VERSION.'.'.PHP_MINOR_VERSION;"], timeout=10)
+    version = res.stdout.strip()
+    return version if res.ok and VERSION_RE.fullmatch(version) else None
+
+
+def socket_path(version: str) -> Path:
+    if not VERSION_RE.fullmatch(version):
+        raise PanelError("Invalid PHP version.", 400)
+    default = Path(f"/run/php/php{version}-fpm.sock")
+    if default.is_socket():
+        return default
+    pool = pool_file(version)
+    if pool and (pool.parent.parent.name == "fpm" or version == _cli_version()):
+        match = re.search(r"^\s*listen\s*=\s*(/[^\s;]+)", pool.read_text(encoding="utf-8"), re.MULTILINE)
+        if match:
+            return Path(match[1])
+    return default
+
+
+def install_options() -> list[str]:
+    manager = packages.manager()
+    if not manager:
+        return []
+    if manager != "apt-get" or not which("apt-cache"):
+        return ["default"]
+    result = run(["apt-cache", "pkgnames", "php"], timeout=10)
+    names = re.findall(r"^php([0-9]{1,2}\.[0-9]{1,2})-fpm$", result.stdout, re.MULTILINE)
+    return ["default", *sorted(set(names), key=lambda v: tuple(map(int, v.split("."))), reverse=True)]
+
+
+def install_runtime(version: str = "default", *, refresh: bool = True) -> dict:
+    version = version.strip()
+    if version != "default" and not VERSION_RE.fullmatch(version):
+        raise PanelError("Choose the distro default or a PHP version such as 8.3.", 400)
+    manager = packages.manager()
+    if not manager:
+        raise PanelError("PHP installation requires a Linux package manager.", 400)
+    with packages.INSTALL_LOCK:
+        if refresh:
+            packages.refresh()
+        if manager == "apt-get":
+            if version == "default":
+                result = run(["apt-cache", "depends", "php-fpm"], timeout=15, check=True, env={"LC_ALL": "C"})
+                match = re.search(r"Depends:\s*php([0-9]{1,2}\.[0-9]{1,2})-fpm\b", result.stdout)
+                if not match:
+                    raise PanelError("The enabled APT repositories do not offer the default PHP-FPM package.", 400)
+                version = match[1]
+            if version not in install_options():
+                raise PanelError(f"PHP {version} is unavailable in the enabled APT repositories. Choose the distro default.", 400)
+            names = [f"php{version}-{ext}" for ext in ("cli", "fpm", "mysql", "curl", "gd", "xml", "mbstring", "zip")]
+            packages.install(names)
+        else:
+            if version != "default":
+                raise PanelError("Choose the default version provided by the active PHP package stream.", 400)
+            packages.install(["php-cli", "php-fpm", "php-mysqlnd", "php-gd", "php-xml", "php-mbstring"])
+            version = _cli_version()
+        unit = fpm_unit(version) if version else None
+        if not unit:
+            raise PanelError("PHP-FPM was installed but its systemd service could not be found.", 500)
+        run(["systemctl", "enable", "--now", unit], timeout=90, check=True)
+        socket = socket_path(version)
+        if not socket.is_socket():
+            raise PanelError(f"PHP-FPM started without the Unix socket at {socket}. Check {unit}.", 500)
+    return {"installed": version, "unit": unit, "socket": str(socket)}
 
 
 def list_versions() -> list[dict]:
@@ -87,16 +155,11 @@ def install_extension(version: str, extension: str) -> dict:
     require_version(version)
     if not re.match(r"^[a-z0-9-]{2,40}$", extension or ""):
         raise PanelError(f"Invalid extension name: {extension}", 400)
-    package = f"php{version}-{extension}" if shutil.which("apt-get") else f"php-{extension}"
-    installer = "apt-get" if shutil.which("apt-get") else "yum"
-    res = run(
-        [installer, "install", "-y", package],
-        timeout=600,
-        env={"DEBIAN_FRONTEND": "noninteractive"},
-    )
-    if res.code != 0:
-        raise PanelError(f"Extension install failed: {res.stderr[-400:]}", 500)
-    restart(version)
+    package = f"php{version}-{extension}" if packages.manager() == "apt-get" else f"php-{extension}"
+    with packages.INSTALL_LOCK:
+        packages.refresh()
+        packages.install([package])
+        restart(version)
     return {"version": version, "extension": extension, "package": package}
 
 

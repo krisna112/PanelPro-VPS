@@ -1,0 +1,12 @@
+{
+  "id": "composer",
+  "name": "Composer",
+  "category": "runtime",
+  "description": "Dependency manager for PHP applications.",
+  "type": "native",
+  "version": "distro",
+  "packages": [
+    "composer"
+  ],
+  "docs_url": "https://getcomposer.org/"
+}

@@ -1,0 +1,17 @@
+{
+  "id": "php-fpm",
+  "name": "PHP-FPM",
+  "category": "runtime",
+  "description": "PHP runtime for Nginx and Apache websites. Select a version from the VPS repositories.",
+  "type": "native",
+  "version": "distro",
+  "docs_url": "https://www.php.net/manual/en/install.fpm.php",
+  "params": [
+    {
+      "name": "version",
+      "label": "PHP version",
+      "default": "default",
+      "required": true
+    }
+  ]
+}

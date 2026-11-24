@@ -1,0 +1,14 @@
+{
+  "id": "python",
+  "name": "Python + pip",
+  "category": "runtime",
+  "description": "Python interpreter, pip and virtual environment support.",
+  "type": "native",
+  "version": "distro",
+  "packages": [
+    "python3",
+    "python3-pip",
+    "python3-venv"
+  ],
+  "docs_url": "https://www.python.org/"
+}

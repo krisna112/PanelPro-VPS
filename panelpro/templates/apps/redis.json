@@ -1,0 +1,13 @@
+{
+  "id": "redis",
+  "name": "Redis",
+  "category": "database",
+  "description": "Local in-memory cache and data store.",
+  "type": "native",
+  "version": "distro",
+  "packages": [
+    "redis-server"
+  ],
+  "unit": "redis-server.service",
+  "docs_url": "https://redis.io/"
+}

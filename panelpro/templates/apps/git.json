@@ -1,0 +1,12 @@
+{
+  "id": "git",
+  "name": "Git",
+  "category": "tools",
+  "description": "Clone and update projects from Git repositories.",
+  "type": "native",
+  "version": "distro",
+  "packages": [
+    "git"
+  ],
+  "docs_url": "https://git-scm.com/"
+}
