@@ -59,13 +59,14 @@ Bearer ppk_…` and work without the entry cookie. See
 ```bash
 git clone https://github.com/krisna112/PanelPro-VPS.git
 cd PanelPro-VPS
-sudo bash scripts/install.sh --domain panel.example.com --email admin@example.com
+sudo bash scripts/install.sh
 ```
 
 On Ubuntu or Debian, point the panel hostname at the VPS and allow incoming
-traffic on ports 80 and 443 before installing. Open the HTTPS login URL printed
-by the installer. Use `--stack php` for PHP-FPM and MariaDB. Initial credentials
-are stored in
+traffic on ports 80 and 443 before installing. Enter the panel hostname,
+Let's Encrypt email, and web stack at the prompts. Use the PHP stack for
+PHP-FPM and MariaDB. Open the HTTPS login URL printed at the end. Initial
+credentials are stored in
 `/usr/local/panelpro/data/admin_credentials.txt`.
 
 From **Websites → Add Website**, choose **Static website**, **PHP-FPM**, or

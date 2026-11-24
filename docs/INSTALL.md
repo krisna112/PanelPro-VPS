@@ -18,23 +18,30 @@ reaches the same VPS.
 ```bash
 git clone https://github.com/krisna112/PanelPro-VPS.git
 cd PanelPro-VPS
+sudo bash scripts/install.sh
+```
+
+The installer asks for the panel hostname, your Let's Encrypt email, and the
+web stack. Choose Nginx for static sites and reverse proxies or choose the
+PHP stack for Nginx, PHP-FPM, and MariaDB on Ubuntu or Debian. After the
+service starts and the certificate is issued, open the full HTTPS login URL
+printed by the installer. The panel backend uses port 21000 on loopback and
+website traffic uses ports 80 and 443. Certbot reloads Nginx when it renews the
+panel certificate.
+
+For unattended setup, pass the values on the command line. With `--domain`, the
+installer defaults to Nginx. Use `--stack php` for PHP-FPM and MariaDB or
+`--stack none` to use existing Nginx and Certbot. On RHEL-family hosts, install
+Certbot separately before setting up the domain.
+
+```bash
 sudo bash scripts/install.sh --domain panel.example.com --email admin@example.com
 ```
 
-With `--domain`, the installer defaults to the Nginx stack. On Ubuntu and
-Debian, it installs Nginx and Certbot, starts PanelPro, and publishes the
-login through Nginx with a Let's Encrypt certificate. It prints the HTTPS
-login URL, including the private entry path, after checking the route. The
-panel backend uses port 21000 on loopback and website traffic uses ports 80
-and 443. Certbot reloads Nginx when it renews the panel certificate.
-
-Use `--stack php` on Ubuntu or Debian to include PHP-FPM and MariaDB. Use
-`--stack none` to reuse a compatible Nginx and Certbot installation. On
-RHEL-family hosts, install Certbot separately before setting up the domain.
-
-If you omit `--domain`, the installer prints the local URL and the SSH tunnel
-command. If certificate or proxy setup fails, it prints those same details so
-you can still access the panel while you fix DNS or connectivity.
+Use `--interactive` to open the wizard when supplying other options. Run
+with just `--non-interactive` for a panel-only installation with the default
+local listener. If you leave the hostname blank in the wizard or if domain setup
+fails, the installer prints the local URL and SSH tunnel command.
 
 Read the first admin password from
 `/usr/local/panelpro/data/admin_credentials.txt` on the server. Delete the file

@@ -1,5 +1,67 @@
 #!/usr/bin/env bash
 # Install PanelPro from a complete checkout on a Linux systemd host.
+
+read_install_answer() {
+  local answer
+  printf '%s' "$1" >&2
+  if ! IFS= read -r answer; then
+    echo "Installation cancelled before applying any changes." >&2
+    return 1
+  fi
+  IFS=$' \t' read -r "$2" <<< "${answer%$'\r'}"
+}
+
+prompt_install_options() {
+  local php_available="$1" choice
+  local hostname_pattern='^([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$'
+
+  echo "PanelPro installation setup" >&2
+  if [[ -z $PANEL_DOMAIN && $PANEL_HOST == 127.0.0.1 ]]; then
+    echo "For public HTTPS, point the panel hostname to this VPS and allow TCP ports 80 and 443." >&2
+    while true; do
+      read_install_answer "Panel hostname (e.g. panel.example.com, Enter for SSH tunnel access): " PANEL_DOMAIN || return 1
+      if [[ -z $PANEL_DOMAIN ]]; then
+        break
+      fi
+      PANEL_DOMAIN="${PANEL_DOMAIN%.}"
+      if [[ ${#PANEL_DOMAIN} -le 253 && $PANEL_DOMAIN =~ $hostname_pattern ]]; then
+        break
+      fi
+      echo "Enter a hostname such as panel.example.com, without https:// or a port." >&2
+    done
+  fi
+
+  if [[ -n $PANEL_DOMAIN && -z $PANEL_EMAIL ]]; then
+    while true; do
+      read_install_answer "Email for Let's Encrypt: " PANEL_EMAIL || return 1
+      if [[ $PANEL_EMAIL == ?*@?* && $PANEL_EMAIL != -* && $PANEL_EMAIL != *[[:space:]]* ]]; then
+        break
+      fi
+      echo "Enter a valid email address." >&2
+    done
+  fi
+
+  if [[ -z $STACK ]]; then
+    echo "1) Nginx for static websites and reverse proxies" >&2
+    if [[ $php_available == true ]]; then
+      echo "2) Nginx, PHP-FPM and MariaDB" >&2
+    fi
+    echo "3) Use the existing web stack" >&2
+    while true; do
+      read_install_answer "Web stack [1]: " choice || return 1
+      case "$choice" in
+        1|'') STACK=nginx; break ;;
+        2) if [[ $php_available == true ]]; then STACK=php; break; fi ;;
+        3) STACK=none; break ;;
+      esac
+      echo "Choose one of the web stacks listed above." >&2
+    done
+  fi
+}
+
+if [[ ${BASH_SOURCE[0]} != "$0" ]]; then
+  return
+fi
 set -euo pipefail
 
 PANEL_PORT="${PANEL_PORT:-21000}"
@@ -9,6 +71,10 @@ STACK=""
 PANEL_DOMAIN=""
 PANEL_EMAIL=""
 SOURCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+INTERACTIVE=false
+if [[ $# -eq 0 && -t 0 ]]; then
+  INTERACTIVE=true
+fi
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -27,8 +93,11 @@ while [[ $# -gt 0 ]]; do
       esac
       shift 2
       ;;
+    --interactive) INTERACTIVE=true; shift ;;
+    --non-interactive) INTERACTIVE=false; shift ;;
     --help)
       echo "Usage: sudo bash scripts/install.sh [--port 21000] [--host 127.0.0.1] [--dir /usr/local/panelpro] [--stack none|nginx|php]"
+      echo "Run without options in a terminal for guided setup, or add --interactive with other options."
       echo "For HTTPS access, add: --domain panel.example.com --email admin@example.com"
       exit 0
       ;;
@@ -52,6 +121,13 @@ INSTALL_DIR="$(realpath -m -- "$INSTALL_DIR")"
 if [[ $INSTALL_DIR == / || ! -f "$SOURCE_DIR/panelpro/__main__.py" || ! -f "$SOURCE_DIR/requirements.txt" ]]; then
   echo "Choose an application directory and run from the complete PanelPro checkout." >&2
   exit 1
+fi
+if [[ $INTERACTIVE == true ]]; then
+  PHP_AVAILABLE=false
+  if command -v apt-get >/dev/null 2>&1; then
+    PHP_AVAILABLE=true
+  fi
+  prompt_install_options "$PHP_AVAILABLE"
 fi
 if [[ -n $PANEL_DOMAIN ]]; then
   if [[ -z $PANEL_EMAIL || $PANEL_HOST != 127.0.0.1 ]]; then

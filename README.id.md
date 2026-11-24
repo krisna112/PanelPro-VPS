@@ -34,13 +34,14 @@ web yang bersih.
 ```bash
 git clone https://github.com/krisna112/PanelPro-VPS.git
 cd PanelPro-VPS
-sudo bash scripts/install.sh --domain panel.example.com --email admin@example.com
+sudo bash scripts/install.sh
 ```
 
 Jalankan di VPS Ubuntu atau Debian setelah DNS subdomain panel mengarah ke IP
-VPS dan port 80 serta 443 bisa diakses. Installer mencetak URL login HTTPS
-lengkap setelah Nginx dan sertifikat siap. Pilih `--stack php` jika situs
-membutuhkan PHP-FPM dan MariaDB. Kredensial pertama ada di
+VPS dan port 80 serta 443 bisa diakses. Isi subdomain panel, email Let's Encrypt,
+dan pilihan stack di terminal. Pilih stack PHP jika situs membutuhkan PHP-FPM
+dan MariaDB. Buka URL login HTTPS yang dicetak installer saat selesai.
+Kredensial pertama ada di
 `/usr/local/panelpro/data/admin_credentials.txt`.
 
 Buka **Websites → Tambah Website**, lalu pilih **Website statis**, **PHP-FPM**,
